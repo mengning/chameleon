@@ -2,3 +2,8 @@ hostapd.config
 hostapd.creator*
 hostapd.includes
 hostapd.files
+hostapd
+hostapd_cli
+*.hostapd
+*.d
+*.o
