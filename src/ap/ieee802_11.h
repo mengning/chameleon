@@ -78,4 +78,7 @@ int hostapd_update_time_adv(struct hostapd_data *hapd);
 void hostapd_client_poll_ok(struct hostapd_data *hapd, const u8 *addr);
 u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid);
 
+#define MAC_ASCII_LEN 17
+void mac_to_ascii(u8 *mac_ascii, const u8 *addr);
+
 #endif /* IEEE802_11_H */

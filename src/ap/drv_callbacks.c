@@ -24,6 +24,7 @@
 #include "tkip_countermeasures.h"
 #include "ieee802_1x.h"
 #include "wpa_auth.h"
+#include "wpa_auth_glue.h"
 #include "wps_hostapd.h"
 #include "ap_drv_ops.h"
 #include "ap_config.h"
@@ -525,7 +526,7 @@ static void hostapd_action_rx(struct hostapd_data *hapd,
 #ifdef NEED_AP_MLME
 
 #define HAPD_BROADCAST ((struct hostapd_data *) -1)
-
+/*
 static struct hostapd_data * get_hapd_bssid(struct hostapd_iface *iface,
 					    const u8 *bssid)
 {
@@ -544,13 +545,80 @@ static struct hostapd_data * get_hapd_bssid(struct hostapd_iface *iface,
 
 	return NULL;
 }
+*/
+static struct hostapd_data * get_hapd_ssid(struct hostapd_iface *iface,
+					    const u8 *bssid, const u8 *sa, const u16 fc)
+{
+	size_t i;
+	u8 mac_ascii[MAC_ASCII_LEN];
+	struct hostapd_config *conf;
 
+	if (bssid == NULL)
+		return NULL;
+	if (bssid[0] == 0xff && bssid[1] == 0xff && bssid[2] == 0xff &&
+	    bssid[3] == 0xff && bssid[4] == 0xff && bssid[5] == 0xff)
+		return HAPD_BROADCAST;
+
+	/*all ap's bssid is the same as, so if it's not equal means it shouldn't send to us.*/
+	if (os_memcmp(bssid, iface->bss[0]->own_addr, ETH_ALEN) != 0)
+		return NULL;
+
+	if (WLAN_FC_GET_TYPE(fc) == 3 /* means unknow station from function hostapd_rx_from_unknown_sta*/
+		|| (WLAN_FC_GET_TYPE(fc) == WLAN_FC_TYPE_MGMT 
+			&& WLAN_FC_GET_STYPE(fc) == WLAN_FC_STYPE_PROBE_REQ) /* probe request */
+		|| (WLAN_FC_GET_TYPE(fc) == WLAN_FC_TYPE_MGMT 
+			&& WLAN_FC_GET_STYPE(fc) == WLAN_FC_STYPE_PROBE_RESP)) /* probe response */
+		return iface->bss[0];
+
+	mac_to_ascii(mac_ascii, sa);
+	for (i = 0; i < iface->num_bss; i++) {
+		if (os_memcmp(mac_ascii, iface->bss[i]->conf->ssid.ssid, iface->bss[i]->conf->ssid.ssid_len) == 0)
+		{
+			printf("find sta : " MACSTR "\n", MAC2STR(sa));
+			return iface->bss[i];
+		}
+	}
+	
+	/*mean don't match, then new one(ap)*/
+
+	/*just new when type is AUTH, before it doesn't need to new one, after it the new ap already have*/
+	if (WLAN_FC_GET_TYPE(fc) == WLAN_FC_TYPE_MGMT
+		&& WLAN_FC_GET_STYPE(fc) == WLAN_FC_STYPE_AUTH)
+	{	
+		printf("new a ap for MAC:" MACSTR "\n", MAC2STR(sa));	/* delete later */
+		iface->num_bss++;
+		iface->bss = (struct hostapd_data **)realloc(iface->bss, 
+						iface->num_bss * sizeof(struct hostapd_data *));
+		conf = iface->interfaces->config_read_cb(iface->config_fname);
+		conf->bss->ssid.ssid_len = MAC_ASCII_LEN;
+		memcpy(conf->bss->ssid.ssid, mac_ascii, MAC_ASCII_LEN);
+		iface->interfaces->set_security_params(conf->bss);
+		iface->bss[iface->num_bss - 1] = hostapd_alloc_bss_data(iface, conf,
+					       					conf->bss);
+		iface->bss[iface->num_bss - 1]->msg_ctx = iface->bss[iface->num_bss - 1];
+		iface->bss[iface->num_bss - 1]->drv_priv = iface->bss[0]->drv_priv;
+		memcpy(iface->bss[iface->num_bss - 1]->own_addr, iface->bss[0]->own_addr, ETH_ALEN);
+		hostapd_setup_wpa(iface->bss[iface->num_bss - 1]);
+		
+		if (iface->bss[iface->num_bss - 1]->wpa_auth)
+			wpa_init_keys(iface->bss[iface->num_bss - 1]->wpa_auth);
+		
+		hostapd_setup_wpa_psk(iface->bss[iface->num_bss - 1]->conf);
+
+		printf("num_bss: %d\n", (int)iface->num_bss);
+
+		return iface->bss[iface->num_bss - 1];
+	}
+	
+	return NULL; /* if end there means it's exception */
+}
 
 static void hostapd_rx_from_unknown_sta(struct hostapd_data *hapd,
 					const u8 *bssid, const u8 *addr,
 					int wds)
 {
-	hapd = get_hapd_bssid(hapd->iface, bssid);
+	printf("hostapd_rx_from_unknown_sta for MAC :" MACSTR "\n", MAC2STR(addr)); /* delete later */
+	hapd = get_hapd_ssid(hapd->iface, bssid, addr, 3 << 2); /* type is 3 means unknow station */
 	if (hapd == NULL || hapd == HAPD_BROADCAST)
 		return;
 
@@ -564,17 +632,17 @@ static void hostapd_mgmt_rx(struct hostapd_data *hapd, struct rx_mgmt *rx_mgmt)
 	const struct ieee80211_hdr *hdr;
 	const u8 *bssid;
 	struct hostapd_frame_info fi;
+	u16 fc;
 
 	hdr = (const struct ieee80211_hdr *) rx_mgmt->frame;
 	bssid = get_hdr_bssid(hdr, rx_mgmt->frame_len);
 	if (bssid == NULL)
 		return;
 
-	hapd = get_hapd_bssid(iface, bssid);
+	fc = le_to_host16(hdr->frame_control);
+	// printf("hostapd_mgmt_rx\n");	/* delete later */
+	hapd = get_hapd_ssid(iface, bssid, ((struct ieee80211_mgmt *)rx_mgmt->frame)->sa, fc);
 	if (hapd == NULL) {
-		u16 fc;
-		fc = le_to_host16(hdr->frame_control);
-
 		/*
 		 * Drop frames to unknown BSSIDs except for Beacon frames which
 		 * could be used to update neighbor information.
@@ -643,14 +711,15 @@ static void hostapd_rx_action(struct hostapd_data *hapd,
 
 
 static void hostapd_mgmt_tx_cb(struct hostapd_data *hapd, const u8 *buf,
-			       size_t len, u16 stype, int ok)
+			       size_t len, u16 type, int ok, const u8 *dst)
 {
 	struct ieee80211_hdr *hdr;
 	hdr = (struct ieee80211_hdr *) buf;
-	hapd = get_hapd_bssid(hapd->iface, get_hdr_bssid(hdr, len));
+	printf("hostapd_mgmt_tx_cb for dst: " MACSTR "\n", MAC2STR(dst));	//delete later
+	hapd = get_hapd_ssid(hapd->iface, get_hdr_bssid(hdr, len), dst, type);
 	if (hapd == NULL || hapd == HAPD_BROADCAST)
 		return;
-	ieee802_11_mgmt_cb(hapd, buf, len, stype, ok);
+	ieee802_11_mgmt_cb(hapd, buf, len, WLAN_FC_GET_STYPE(type), ok);
 }
 
 #endif /* NEED_AP_MLME */
@@ -701,6 +770,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			  union wpa_event_data *data)
 {
 	struct hostapd_data *hapd = ctx;
+	u16 ty; /* for type */
 #ifndef CONFIG_NO_STDOUT_DEBUG
 	int level = MSG_DEBUG;
 
@@ -740,10 +810,12 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 	case EVENT_TX_STATUS:
 		switch (data->tx_status.type) {
 		case WLAN_FC_TYPE_MGMT:
+			ty = (data->tx_status.type << 2) | (data->tx_status.stype << 4);
 			hostapd_mgmt_tx_cb(hapd, data->tx_status.data,
 					   data->tx_status.data_len,
-					   data->tx_status.stype,
-					   data->tx_status.ack);
+					   ty,
+					   data->tx_status.ack,
+					   data->tx_status.dst);
 			break;
 		case WLAN_FC_TYPE_DATA:
 			hostapd_tx_status(hapd, data->tx_status.dst,

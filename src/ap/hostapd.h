@@ -35,6 +35,7 @@ struct hapd_interfaces {
 				  int (*cb)(struct hostapd_iface *iface,
 					    void *ctx), void *ctx);
 	int (*driver_init)(struct hostapd_iface *iface);
+	void (*set_security_params)(struct hostapd_bss_config *bss);
 
 	size_t count;
 	int global_ctrl_sock;

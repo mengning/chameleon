@@ -1,7 +1,5 @@
-hostapd.config
-hostapd.creator*
-hostapd.includes
-hostapd.files
+.tags
+.tags_sorted_by_file
 hostapd
 hostapd_cli
 *.hostapd
