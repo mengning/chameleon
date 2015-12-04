@@ -10,6 +10,7 @@
 
 #include "utils/common.h"
 #include "radius/radius.h"
+#include "radius/radius_client.h"
 #include "drivers/driver.h"
 #include "common/ieee802_11_defs.h"
 #include "common/ieee802_11_common.h"
@@ -604,6 +605,8 @@ static struct hostapd_data * get_hapd_ssid(struct hostapd_iface *iface,
 			wpa_init_keys(iface->bss[iface->num_bss - 1]->wpa_auth);
 		
 		hostapd_setup_wpa_psk(iface->bss[iface->num_bss - 1]->conf);
+		iface->bss[iface->num_bss - 1]->radius = radius_client_init(iface->bss[iface->num_bss - 1], 
+															iface->bss[iface->num_bss - 1]->conf->radius);
 
 		printf("num_bss: %d\n", (int)iface->num_bss);
 
