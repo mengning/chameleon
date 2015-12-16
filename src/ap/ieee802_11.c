@@ -561,7 +561,7 @@ static void handle_auth(struct hostapd_data *hapd,
 
 	sta = ap_sta_add(hapd, mgmt->sa);
 	if (!sta) {
-		printf("add station "MACSTR" failed in handle_auth\n", MAC2STR(mgmt->sa));	/* delete later */
+		wpa_printf(MSG_DEBUG, "add station "MACSTR" failed in handle_auth\n", MAC2STR(mgmt->sa));
 		resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
 		goto fail;
 	}
