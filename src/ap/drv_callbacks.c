@@ -673,8 +673,7 @@ static struct hostapd_data * get_hapd_ssid(struct hostapd_iface *iface,
 	if (os_memcmp(bssid, iface->bss[0]->own_addr, ETH_ALEN) != 0)
 		return NULL;
 
-	if (WLAN_FC_GET_TYPE(fc) == 3 /* means unknow station from function hostapd_rx_from_unknown_sta*/
-		|| (WLAN_FC_GET_TYPE(fc) == WLAN_FC_TYPE_MGMT 
+	if ((WLAN_FC_GET_TYPE(fc) == WLAN_FC_TYPE_MGMT 
 			&& WLAN_FC_GET_STYPE(fc) == WLAN_FC_STYPE_PROBE_REQ) /* probe request */
 		|| (WLAN_FC_GET_TYPE(fc) == WLAN_FC_TYPE_MGMT 
 			&& WLAN_FC_GET_STYPE(fc) == WLAN_FC_STYPE_PROBE_RESP)) /* probe response */
@@ -730,7 +729,8 @@ static void hostapd_rx_from_unknown_sta(struct hostapd_data *hapd,
 					int wds)
 {
 	wpa_printf(MSG_DEBUG, "hostapd_rx_from_unknown_sta for MAC: " MACSTR "\n", MAC2STR(addr));
-	hapd = get_hapd_ssid(hapd->iface, bssid, addr, 3 << 2); /* type is 3 means unknow station */
+	/* type is 3 means unknow station, just distinguish with other's , don't use it in face*/
+	hapd = get_hapd_ssid(hapd->iface, bssid, addr, 3 << 2);
 	if (hapd == NULL || hapd == HAPD_BROADCAST)
 		return;
 
