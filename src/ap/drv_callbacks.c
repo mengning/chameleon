@@ -555,7 +555,7 @@ static struct hostapd_data * get_hapd_bssid(struct hostapd_iface *iface,
 }
 */
 
-static int init_newAP(struct hostapd_data *hapd)
+static int hostapd_setup_new_bss(struct hostapd_data *hapd)
 {
 	struct hostapd_bss_config *conf = hapd->conf;
 
@@ -669,7 +669,7 @@ static struct hostapd_data * get_hapd_ssid(struct hostapd_iface *iface,
 	    bssid[3] == 0xff && bssid[4] == 0xff && bssid[5] == 0xff)
 		return HAPD_BROADCAST;
 
-	/*all ap's bssid is the same as, so if it's not equal means it shouldn't send to us.*/
+	/* All ap's bssid are the same, so if it's not equal, means not send to us. */
 	if (os_memcmp(bssid, iface->bss[0]->own_addr, ETH_ALEN) != 0)
 		return NULL;
 
@@ -687,9 +687,12 @@ static struct hostapd_data * get_hapd_ssid(struct hostapd_iface *iface,
 		}
 	}
 	
-	/*mean don't match, then new one(ap)*/
+	/* If it doesn't match, then create a new ap */
 
-	/*just new when type is AUTH, before it doesn't need to new one, after it the new ap already have*/
+	/*
+     * A new ap is created only when the type of the frame is AUTH,
+     * because it doesn't need to be created before AUTH, and after AUTH the new ap has been created 
+     */
 	if (WLAN_FC_GET_TYPE(fc) == WLAN_FC_TYPE_MGMT
 		&& WLAN_FC_GET_STYPE(fc) == WLAN_FC_STYPE_AUTH)	{
 		size_t index;
@@ -713,7 +716,7 @@ static struct hostapd_data * get_hapd_ssid(struct hostapd_iface *iface,
 		iface->bss[index]->drv_priv = iface->bss[0]->drv_priv;
 		memcpy(iface->bss[index]->own_addr, iface->bss[0]->own_addr, ETH_ALEN);
 
-		if (init_newAP(iface->bss[index]))
+		if (hostapd_setup_new_bss(iface->bss[index]))
 			return NULL;
 
 		wpa_printf(MSG_DEBUG, "num_bss: %d\n", (int)iface->num_bss);
@@ -721,7 +724,7 @@ static struct hostapd_data * get_hapd_ssid(struct hostapd_iface *iface,
 		return iface->bss[index];
 	}
 	
-	return NULL; /* if end there means it's exception */
+	return NULL; /* If ends here, it means there's an anomaly */
 }
 
 static void hostapd_rx_from_unknown_sta(struct hostapd_data *hapd,
@@ -729,7 +732,10 @@ static void hostapd_rx_from_unknown_sta(struct hostapd_data *hapd,
 					int wds)
 {
 	wpa_printf(MSG_DEBUG, "hostapd_rx_from_unknown_sta for MAC: " MACSTR "\n", MAC2STR(addr));
-	/* type is 3 means unknow station, just distinguish with other's , don't use it in face*/
+	/* 
+     * Type 3 means unknown station, so that other stations are 
+     * simply to be distinguished, without actually using this type
+     */
 	hapd = get_hapd_ssid(hapd->iface, bssid, addr, 3 << 2);
 	if (hapd == NULL || hapd == HAPD_BROADCAST)
 		return;

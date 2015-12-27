@@ -236,6 +236,7 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 //	pos += hapd->conf->ssid.ssid_len;
 
     //MAC地址存放在结构体struct ieee80211_mgmt的成员sa[6]中,先要将其转换成对应的ASCII码
+    wpa_printf(MSG_DEBUG, "change SSID to MAC addr\n");
     mac_to_ascii(mac_ascii, req->sa);
     *pos++ = MAC_ASCII_LEN;
     os_memcpy(pos, mac_ascii, MAC_ASCII_LEN);
