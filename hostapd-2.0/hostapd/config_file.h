@@ -13,5 +13,6 @@ struct hostapd_config * hostapd_config_read(const char *fname);
 int hostapd_set_iface(struct hostapd_config *conf,
 		      struct hostapd_bss_config *bss, char *field,
 		      char *value);
+void hostapd_set_security_params(struct hostapd_bss_config *bss);
 
 #endif /* CONFIG_FILE_H */
