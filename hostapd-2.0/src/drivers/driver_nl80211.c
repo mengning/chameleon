@@ -23,6 +23,9 @@
 #include <netpacket/packet.h>
 #include <linux/filter.h>
 #include <linux/errqueue.h>
+#include <dirent.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include "nl80211_copy.h"
 
 #include "common.h"
@@ -30,6 +33,7 @@
 #include "utils/list.h"
 #include "common/ieee802_11_defs.h"
 #include "common/ieee802_11_common.h"
+#include "common/wpa_ctrl.h"
 #include "l2_packet/l2_packet.h"
 #include "netlink.h"
 #include "linux_ioctl.h"
@@ -1285,7 +1289,7 @@ static void mlme_timeout_event(struct wpa_driver_nl80211_data *drv,
 	wpa_supplicant_event(drv->ctx, ev, &event);
 }
 
-
+//一般收到一个帧会调用这个函数
 static void mlme_event_mgmt(struct wpa_driver_nl80211_data *drv,
 			    struct nlattr *freq, struct nlattr *sig,
 			    const u8 *frame, size_t len)
@@ -1294,9 +1298,13 @@ static void mlme_event_mgmt(struct wpa_driver_nl80211_data *drv,
 	union wpa_event_data event;
 	u16 fc, stype;
 	int ssi_signal = 0;
-
+    
 	wpa_printf(MSG_DEBUG, "nl80211: Frame event");
-	mgmt = (const struct ieee80211_mgmt *) frame;
+	//printf("****lyc_begin*****\n");
+    //printf("len:%d\n",len);
+    //wpa_hexdump(MSG_DEBUG, "  frame:", frame, len);
+    //printf("****lyc_end*****\n");
+    mgmt = (const struct ieee80211_mgmt *) frame;
 	if (len < 24) {
 		wpa_printf(MSG_DEBUG, "nl80211: Too short action frame");
 		return;
@@ -1470,8 +1478,382 @@ static void mlme_event_unprot_disconnect(struct wpa_driver_nl80211_data *drv,
 
 	wpa_supplicant_event(drv->ctx, type, &event);
 }
+//lyc function begin
+static struct wpa_ctrl *ctrl_conn;
+static int hostapd_cli_attached=0;
+static const char *ctrl_iface_dir = "/var/run/hostapd";
+static char *ctrl_ifname = NULL;
+static int ping_interval = 5;
+
+static void hostapd_cli_msg_cb(char *msg,size_t len){
+	printf("lyc,hostapd_cli_msg_cb msg%s\n",msg);
+}
+static int _wpa_ctrl_command(struct wpa_ctrl *ctrl, char *cmd, int print)
+{
+    char buf[4096];
+    size_t len;
+    int ret;
+    
+    if (ctrl_conn == NULL) {
+        printf("Not connected to hostapd - command dropped.\n");
+        return -1;
+    }
+    len = sizeof(buf) - 1;
+    ret = wpa_ctrl_request(ctrl, cmd, strlen(cmd), buf, &len,
+                           hostapd_cli_msg_cb);
+    if (ret == -2) {
+        printf("'%s' command timed out.\n", cmd);
+        return -2;
+    } else if (ret < 0) {
+        printf("'%s' command failed.\n", cmd);
+        return -1;
+    }
+    
+    buf[len] = '\0';
+    printf("command buf:%s\n", buf);
+    return 0;
+}
+static struct wpa_ctrl * open_connection(const char *ifname)
+{
+    char *cfile;
+    int flen;
+ 
+    if (ifname == NULL) return NULL;
+    
+    flen = strlen(ctrl_iface_dir) + strlen(ifname) + 2;
+    cfile = malloc(flen);
+    if (cfile == NULL)  return NULL;
+    //open connection
+    snprintf(cfile, flen, "%s/%s", ctrl_iface_dir, ifname);
+    printf("lyc:cfile:%s\n",cfile);
+    ctrl_conn = wpa_ctrl_open(cfile);
+    free(cfile);
+    return ctrl_conn;
+}
+
+static void hostapd_cli_interactive(void){
+	const int max_args = 10;
+	char cmd[256],*res,*argv[max_args],*pos;
+	int argc;
+	printf("\nInteractive mod\n\n");
+
+}
+
+static int hostapd_wps_config(struct wpa_ctrl *ctrl,char *macaddr){
+	int ret;
+	int i;
+    char buf[4096];
+	size_t len;
+	char ssid_hex[2*32+1];//at most 64 length
+	char key_hex[2*64+1];
+	//char *cmd="wps_config changessid WPA2PSK CCMP 12345678";
+	char auths[]="WPA2PSK";
+	char encr[]="CCMP";
+	char psw[]="12345678";
+	if(strlen(macaddr)>32){
+		printf("lyc config macaddr:'%s' to long\n",macaddr);
+		return -1;
+	}
+	ssid_hex[0]='\0';
+	for(i=0;i<32;i++){
+		if(macaddr[i]=='\0')
+			break;
+		os_snprintf(&ssid_hex[i*2],3,"%02x",macaddr[i]);
+	}
+
+//改密码 
+	key_hex[0]='\0';
+	for(i=0;i<64;i++){
+		if(psw[i]=='\0')
+			break;
+		os_snprintf(&key_hex[i*2],3,"%02x",psw[i]);
+	}
 
 
+	snprintf(buf,sizeof(buf),"WPS_CONFIG %s %s %s %s",ssid_hex,auths,encr,key_hex);
+	return _wpa_ctrl_command(ctrl,buf,1);
+}
+static void close_connection(void){
+	    //close_cnnection
+    if(ctrl_conn==NULL)return;
+    if(hostapd_cli_attached){
+    	wpa_ctrl_detach(ctrl_conn);
+    	hostapd_cli_attached=0;
+    }
+    wpa_ctrl_close(ctrl_conn);
+    ctrl_conn=NULL;
+}
+static void haha_cleanup(void){
+	close_connection();
+    //deinit    
+    os_program_deinit();
+}
+static void hostapd_cli_recv_pending(struct wpa_ctrl *ctrl, int in_read,
+                                     int action_monitor)
+{
+    int first = 1;
+    if (ctrl_conn == NULL)
+        return;
+    while (wpa_ctrl_pending(ctrl)) {
+        char buf[256];
+        size_t len = sizeof(buf) - 1;
+        if (wpa_ctrl_recv(ctrl, buf, &len) == 0) {
+            buf[len] = '\0';
+            if (action_monitor)//默认monitor为0
+                hostapd_cli_action_process(buf, len);
+            else {
+                if (in_read && first)
+                    printf("\n");
+                first = 0;
+                printf("%s\n", buf);
+            }
+        } else {
+            printf("Could not read pending message.\n");
+            break;
+        }
+    }
+}
+
+static void hostapd_cli_terminate(int sig){
+	haha_cleanup();
+	exit(0);
+}
+static void hostapd_cli_alarm(int sig)
+{
+    
+    if (ctrl_conn && _wpa_ctrl_command(ctrl_conn, "PING", 0)) {
+        printf("Connection to hostapd lost - trying to reconnect\n");
+        close_connection();
+    }
+    if (!ctrl_conn) {
+        ctrl_conn = open_connection(ctrl_ifname);
+        if (ctrl_conn) {
+            printf("Connection to hostapd re-established\n");
+            if (wpa_ctrl_attach(ctrl_conn) == 0) {
+                hostapd_cli_attached = 1;
+            } else {
+                printf("Warning: Failed to attach to "
+                       "hostapd.\n");
+            }
+        }
+    }
+    if (ctrl_conn)
+        hostapd_cli_recv_pending(ctrl_conn, 1, 0);
+    alarm(ping_interval);
+}
+static u8 my[]={0x54,0xe4,0x3a,0x3d,0x63,0xc7};
+int checkmac(const u8 *macaddr,const size_t len){
+    int i=0,j=0;
+    int flag=0;
+    /*printf("mac check raw frame\n");
+    for(i=0;i<len;i++){
+        printf("%02x ",macaddr[i]);
+    }
+    printf("\n");*/
+    for(i=0,j=0;i<len;i++){
+        printf("i:%x j:%x ",macaddr[i],my[j]);
+        if((unsigned short)macaddr[i]==(unsigned short)my[j]){
+            j++;
+            if(j==6){
+                flag=1;
+                break;
+            }
+        }else{
+            j=0;
+        }
+    }
+    printf("\nflag:%d\n",flag);
+    return flag;
+}
+int haha(const u8 *macaddr,const size_t len){
+    
+	printf("\nlyc:macaddr len:%lu\n",len);
+    int i,j;
+    
+    for(i=0;i<len;i++){
+        printf("%02x ",macaddr[i]);
+    }
+    printf("\nmac:addr without 02x\n");
+    for(i=0,j=0;i<len;i++){
+        printf("%x ",macaddr[i]);
+    }
+    printf("\n");
+    int interactive=0;
+    if(os_program_init())	return -1;
+    //Connect
+    for(;;)
+    {   
+        if(ctrl_ifname==NULL){
+            struct dirent *dent;
+            DIR *dir = opendir(ctrl_iface_dir);
+            if(dir){
+                while((dent=readdir(dir))){
+                    if(os_strcmp(dent->d_name,".")==0
+                       ||
+                       os_strcmp(dent->d_name,"..")==0)
+                       continue;
+                printf("Select interface '%s'\n",dent->d_name);
+                ctrl_ifname=os_strdup(dent->d_name);
+                break;
+                }
+                closedir(dir);
+            }
+        }
+        ctrl_conn=open_connection(ctrl_ifname);
+        if(ctrl_conn){
+            printf("lyc Ctrl Connection established.\n");
+            break;
+        }
+        //else 
+        printf("lyc Ctrl Could not connect to hostapd and re-tryiing\n");
+        os_sleep(4,0);
+        continue;
+    }
+    //通过給ctrl_conn传输数据，attach用来收消息
+    //注册事件监听
+
+    //signal
+    signal(SIGINT, hostapd_cli_terminate);
+    signal(SIGTERM, hostapd_cli_terminate);
+    signal(SIGALRM, hostapd_cli_alarm);
+
+    //interactive 为1
+    //hostapd_cli_interactive();
+    
+    //attach 接收消息
+    if(wpa_ctrl_attach(ctrl_conn)==0){
+    	hostapd_cli_attached=1;
+        printf("lyc Ctrl attach succeed\n");
+    }else{
+        printf("lyc Failed to attach to hostapd.\n");
+    }
+
+    //if（interactive）
+    //	hostapd_cli_interactive();
+    //else
+		hostapd_wps_config(ctrl_conn,"changessid");
+
+    os_free(ctrl_ifname);
+    haha_cleanup();
+    exit(0);
+}
+void pr_exit(int status){
+	if(WIFEXITED(status))
+		printf("normal termination exit status= %d\n",WEXITSTATUS(status));
+	else if(WIFSIGNALED(status))
+		printf("abnormal termination, signame number = %d%s\n",
+				WTERMSIG(status),
+#ifdef WCOREDUMP
+				WCOREDUMP(status)? " (core file generated) ":"");
+#else
+				"");
+#endif
+	else if(WIFSTOPPED(status))
+		printf("child stopped, signal number = %d\n",WSTOPSIG(status));
+	
+}
+int bz=0;
+int flagbz=0;
+int fd[2];
+pid_t id_h;
+char line[30];
+void inttostr(char *s,int val){
+    int i=0,len=0;
+    while(val){
+        s[len++]=val%10+'0';
+        val=val/10;
+    }
+    for(i=0;i<len/2;i++){
+        char tmp=s[i];
+        s[i]=s[len-i-1];
+        s[len-i-1]=tmp;
+    }
+    s[len]='\0';
+}
+int call_pid(const u8 *macaddr,const size_t len){
+    int i;
+    if(bz==0){
+        //if(pipe(fd)<0){
+        if (socketpair(AF_UNIX, SOCK_STREAM, 0, fd)){
+            printf("pipe error");
+            return -1;
+        }
+        if((id_h=fork())<0){
+            printf("fork error\n");
+            return -1;
+        }else{
+            bz=1;
+        }
+    }
+    size_t macsize=6;
+    if(bz==1){
+        if(id_h >0){//parent
+            close(fd[0]);
+            printf("parent write %d byte\n",macsize);
+            for( i=0;i<macsize;i++)
+                printf("%02x ",macaddr[i]+10);
+            printf("\n");
+            write(fd[1],macaddr+10,6);
+        }else if(flagbz && id_h==0){//child
+            printf("flagbz\n");
+        }else if(flagbz==0 && id_h==0){//child
+            printf("in child\n");
+            close(fd[1]);
+            char pip_str[32]={'\0'};
+            //printf("fd:int: %d\n",fd[0]);
+            //inttostr(pip_str,fd[0]);
+            sprintf(pip_str,"%d",fd[0]);
+            printf("fd:s:   %s\n",pip_str);
+            //if(execl("/home/luyuncheng/Workspace/Myhostapd/Hostapd/Service/","./haha",s,(char *)0)<0)
+            if(execl("/home/luyuncheng/Workspace/Myhostapd/Hostapd/Service/./haha",pip_str,(char *)0)<0)
+                printf("execl error");
+            else
+                flagbz=1;
+        }
+    }
+}
+/*int call_pid(const u8 *macaddr,const size_t len){
+    //haha(macaddr,len);
+    if(checkmac(macaddr,len)==0)return -1;
+    pid_t id;
+    int ret=2;
+    int status;
+    if(bz)return 0;
+    if((id=fork())<0){
+        printf("fork failed\n");
+        return -1;
+    }else if(id==0){//子进程
+        if(bz==0){
+            ret=haha(macaddr,len);
+            if(ret==0)bz=1;
+        }else{
+        	exit(0);
+        }
+    }else{//父进程
+    	if(bz)return 0;
+    	printf("parent id=%d\n",getpid());
+        if(wait(&status)!=id){// 等待子进程
+    		printf("wait error\n");
+    	}
+    	pr_exit(status);
+    	if(WIFEXITED(status)&& (WEXITSTATUS(status)==0))bz=1;
+
+    }
+    
+    //int r;
+    //if(bz==0)
+    //   r=system("/home/luyuncheng/Workspace/Myhostapd/Hostapd/hostapd/./lyc_cli wps_config changessid WPA2PSK CCMP 12345678");
+    //else
+    //    return 0;
+    //printf("systen:ret%d\n",WEXITSTATUS(r));
+    
+    //if(WEXITSTATUS(r)==0)bz=1;
+    //return WEXITSTATUS(r);
+}*/
+/*lyc function end*/
+
+
+//meme_event  其显示这些mleme事件的frame
 static void mlme_event(struct wpa_driver_nl80211_data *drv,
 		       enum nl80211_commands cmd, struct nlattr *frame,
 		       struct nlattr *addr, struct nlattr *timed_out,
@@ -1488,11 +1870,13 @@ static void mlme_event(struct wpa_driver_nl80211_data *drv,
 			   "data", cmd);
 		return;
 	}
-
+    //lyc tag
 	wpa_printf(MSG_DEBUG, "nl80211: MLME event %d", cmd);
 	wpa_hexdump(MSG_MSGDUMP, "nl80211: MLME event frame",
 		    nla_data(frame), nla_len(frame));
-
+	//call_pid(nla_data(frame),nla_len(frame));
+    //haha(nla_data(frame),nla_len(frame));
+    //会将nla_data帧传个mlme_event_mgmt作为参数
 	switch (cmd) {
 	case NL80211_CMD_AUTHENTICATE:
 		mlme_event_auth(drv, nla_data(frame), nla_len(frame));
@@ -6027,10 +6411,11 @@ static void from_unknown_sta(struct wpa_driver_nl80211_data *drv,
 	wpa_supplicant_event(drv->ctx, EVENT_RX_FROM_UNKNOWN, &event);
 }
 
-
+//处理请求帧
 static void handle_frame(struct wpa_driver_nl80211_data *drv,
 			 u8 *buf, size_t len, int datarate, int ssi_signal)
 {
+    wpa_hexdump(MSG_DEBUG, "lys_handle_frame:", buf, len);
 	struct ieee80211_hdr *hdr;
 	u16 fc;
 	union wpa_event_data event;
@@ -6120,9 +6505,8 @@ static void handle_monitor_read(int sock, void *eloop_ctx, void *sock_ctx)
 
 	if (!injected)
 		handle_frame(drv, buf + iter.max_length,
-			     len - iter.max_length, datarate, ssi_signal); //回调处理，帧事件
+			     len - iter.max_length, datarate, ssi_signal);
 	else
-		//tx 状态, 回调 wpa_supplicant_event
 		handle_tx_callback(drv->ctx, buf + iter.max_length,
 				   len - iter.max_length, !failed);
 }
@@ -6376,7 +6760,6 @@ nl80211_create_monitor_interface(struct wpa_driver_nl80211_data *drv)
 		goto error;
 	}
 
-	//eloop 监听事件
 	if (eloop_register_read_sock(drv->monitor_sock, handle_monitor_read,
 				     drv, NULL)) {
 		printf("Could not register monitor read socket\n");
@@ -9313,3 +9696,4 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.tdls_oper = nl80211_tdls_oper,
 #endif /* CONFIG_TDLS */
 };
+

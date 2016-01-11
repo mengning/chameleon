@@ -1,0 +1,154 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.9~svn20110310	//
+A_CRLF	parse.c	/^enum {A_NONE, A_SPACE, A_CRLF} ahead = A_NONE;$/;"	e	enum:__anon1	file:
+A_NONE	parse.c	/^enum {A_NONE, A_SPACE, A_CRLF} ahead = A_NONE;$/;"	e	enum:__anon1	file:
+A_SPACE	parse.c	/^enum {A_NONE, A_SPACE, A_CRLF} ahead = A_NONE;$/;"	e	enum:__anon1	file:
+BUF_SIZE	server.c	16;"	d	file:
+Body_new	parse.c	/^Body_t Body_new (char *key, char *value)$/;"	f
+Body_print	http-tree.c	/^void Body_print(int fd, char *s)$/;"	f
+Body_t	http-tree.h	/^struct Body_t$/;"	s
+Body_t	http-tree.h	/^typedef struct Body_t *Body_t;$/;"	t	typeref:struct:Body_t
+DEBUG	banksv.c	11;"	d	file:
+DEBUG	filesv.c	10;"	d	file:
+DEBUG	handle.c	13;"	d	file:
+DEBUG	httpd.c	8;"	d	file:
+DEBUG	parse.c	8;"	d	file:
+DEBUG	server.c	15;"	d	file:
+DIE	server.c	18;"	d	file:
+HANDLE_H	handle.h	2;"	d
+HOST_PORT	server.c	14;"	d	file:
+HTTP_KIND_REQUEST	http-tree.h	/^  HTTP_KIND_REQUEST,$/;"	e	enum:HttpKind_t
+HTTP_KIND_RESPONSE	http-tree.h	/^  HTTP_KIND_RESPONSE,$/;"	e	enum:HttpKind_t
+HTTP_ONE_ONE	http-tree.h	/^  HTTP_ONE_ONE,$/;"	e	enum:HttpVersion_t
+HTTP_ONE_ZERO	http-tree.h	/^  HTTP_ONE_ZERO,$/;"	e	enum:HttpVersion_t
+HTTP_TREE_H	http-tree.h	2;"	d
+HTTP_TWO_ZERO	http-tree.h	/^  HTTP_TWO_ZERO,$/;"	e	enum:HttpVersion_t
+Handle_main	handle.c	/^void Handle_main (int fd, Http_t tree)$/;"	f
+Header_new	http-tree.c	/^Header_t Header_new (char *key$/;"	f
+Header_print	http-tree.c	/^void Header_print (int fd, Header_t h)$/;"	f
+Header_search	http-tree.c	/^char *Header_search (Header_t header$/;"	f
+Header_t	http-tree.h	/^struct Header_t$/;"	s
+Header_t	http-tree.h	/^typedef struct Header_t *Header_t;$/;"	t	typeref:struct:Header_t
+HttpKind_t	http-tree.h	/^enum HttpKind_t{$/;"	g
+HttpVersion_print	http-tree.c	/^HttpVersion_print (int fd, enum HttpVersion_t v)$/;"	f
+HttpVersion_t	http-tree.h	/^enum HttpVersion_t{$/;"	g
+Http_new	http-tree.c	/^Http_t Http_new (enum HttpKind_t kind$/;"	f
+Http_print	http-tree.c	/^void Http_print (int fd, Http_t http)$/;"	f
+Http_t	http-tree.h	/^struct Http_t$/;"	s
+Http_t	http-tree.h	/^typedef struct Http_t *Http_t;$/;"	t	typeref:struct:Http_t
+KeyWord_t	token.c	/^struct KeyWord_t$/;"	s	file:
+PARSE_H	parse.h	2;"	d
+PORT	browser.c	11;"	d	file:
+Parse_parse	parse.c	/^void *Parse_parse (int fd, int reqOnly)$/;"	f
+Parse_reqLine	parse.c	/^ReqLine_t Parse_reqLine (int fd)$/;"	f
+REQ_KIND_GET	http-tree.h	/^  REQ_KIND_GET,$/;"	e	enum:ReqKind_t
+REQ_KIND_HEAD	http-tree.h	/^  REQ_KIND_HEAD,$/;"	e	enum:ReqKind_t
+REQ_KIND_POST	http-tree.h	/^  REQ_KIND_POST,$/;"	e	enum:ReqKind_t
+RESP_200	http-tree.h	/^  RESP_200, \/\/ OK  $/;"	e	enum:RespKind_t
+RESP_400	http-tree.h	/^  RESP_400, \/\/ client error  $/;"	e	enum:RespKind_t
+RESP_404	http-tree.h	/^  RESP_404, \/\/ resource not found$/;"	e	enum:RespKind_t
+ReqKind_print	http-tree.c	/^void ReqKind_print (int fd, enum ReqKind_t kind)$/;"	f
+ReqKind_t	http-tree.h	/^enum ReqKind_t{$/;"	g
+ReqLine_new	http-tree.c	/^ReqLine_t ReqLine_new (enum ReqKind_t kind$/;"	f
+ReqLine_print	http-tree.c	/^void ReqLine_print (int fd, ReqLine_t req)$/;"	f
+ReqLine_t	http-tree.h	/^struct ReqLine_t$/;"	s
+ReqLine_t	http-tree.h	/^typedef struct ReqLine_t *ReqLine_t;$/;"	t	typeref:struct:ReqLine_t
+RespKind_print	http-tree.c	/^void RespKind_print(int fd, enum RespKind_t k)$/;"	f
+RespKind_t	http-tree.h	/^enum RespKind_t{$/;"	g
+RespLine_new	http-tree.c	/^RespLine_t RespLine_new(enum HttpVersion_t v$/;"	f
+RespLine_print	http-tree.c	/^void RespLine_print (int fd, RespLine_t resp)$/;"	f
+RespLine_t	http-tree.h	/^struct RespLine_t$/;"	s
+RespLine_t	http-tree.h	/^typedef struct RespLine_t *RespLine_t;$/;"	t	typeref:struct:RespLine_t
+TOKEN_CRLF	token.h	/^  TOKEN_CRLF,$/;"	e	enum:TokenKind_t
+TOKEN_EOF	token.h	/^  TOKEN_EOF,$/;"	e	enum:TokenKind_t
+TOKEN_GET	token.h	/^  TOKEN_GET,$/;"	e	enum:TokenKind_t
+TOKEN_H	token.h	2;"	d
+TOKEN_HEAD	token.h	/^  TOKEN_HEAD,$/;"	e	enum:TokenKind_t
+TOKEN_HTTP_ONE_ONE	token.h	/^  TOKEN_HTTP_ONE_ONE,$/;"	e	enum:TokenKind_t
+TOKEN_POST	token.h	/^  TOKEN_POST,$/;"	e	enum:TokenKind_t
+TOKEN_SPACE	token.h	/^  TOKEN_SPACE,$/;"	e	enum:TokenKind_t
+TOKEN_STR	token.h	/^  TOKEN_STR,$/;"	e	enum:TokenKind_t
+TokenKind_t	token.h	/^enum TokenKind_t{$/;"	g
+TokenKind_toString	token.c	/^char *TokenKind_toString (enum TokenKind_t k)$/;"	f
+Token_getKeyWord	token.c	/^enum TokenKind_t Token_getKeyWord(char *s)$/;"	f
+Token_new	token.h	21;"	d
+Token_t	token.h	/^struct Token_t$/;"	s
+ahead	parse.c	/^enum {A_NONE, A_SPACE, A_CRLF} ahead = A_NONE;$/;"	v	typeref:enum:__anon1
+body	http-tree.h	/^  char *body;$/;"	m	struct:Http_t
+create_socket_dir	chroot-setup.sh	/^create_socket_dir() {$/;"	f
+die	banksv.c	/^void die (const char *msg)$/;"	f
+die	filesv.c	/^void die (const char *msg)$/;"	f
+die	httpd.c	/^void die (const char *msg)$/;"	f
+eatToken	parse.c	/^char *eatToken(enum TokenKind_t kind, int fd)$/;"	f
+error	banksv.c	/^void error (int fd, int errCode, char *msg)$/;"	f
+error	filesv.c	/^void error (int fd, int errCode, char *msg)$/;"	f
+error	http-tree.c	/^void error (char *s, char *file, int line)$/;"	f
+error	httpd.c	/^void error (int fd, int errCode, char *msg)$/;"	f
+fileNotExist	handle.c	/^static char *fileNotExist =$/;"	v	file:
+fileOk	handle.c	/^static char *fileOk = $/;"	v	file:
+generate400	parse.c	/^Http_t generate400()$/;"	f
+getChar	parse.c	/^char getChar (int fd)$/;"	f
+getTime	handle.c	/^static char *getTime()$/;"	f	file:
+getToken	parse.c	/^void getToken (int fd, int sepBySpace)$/;"	f
+getValues	handle.c	/^static void getValues (Http_t tree)$/;"	f	file:
+gfd	parse.c	/^int gfd;$/;"	v
+handleGet	handle.c	/^void handleGet (char *uri, int fd)$/;"	f
+handleHead	handle.c	/^void handleHead (char *uri, int fd)$/;"	f
+handlePost	handle.c	/^void handlePost(Http_t tree, int fd)$/;"	f
+handlePostLogin	handle.c	/^void handlePostLogin (int fd$/;"	f
+handlePostLogout	handle.c	/^void handlePostLogout (int fd)$/;"	f
+handlePostRegister	handle.c	/^void handlePostRegister (int fd$/;"	f
+handlePostTransfer	handle.c	/^void handlePostTransfer (int fd$/;"	f
+headers	http-tree.h	/^  Header_t headers;$/;"	m	struct:Http_t
+http400	parse.c	/^Http_t http400 = 0;$/;"	v
+httpversion	http-tree.h	/^  enum HttpVersion_t httpversion;$/;"	m	struct:ReqLine_t	typeref:enum:ReqLine_t::HttpVersion_t
+httpversion	http-tree.h	/^  enum HttpVersion_t httpversion;$/;"	m	struct:RespLine_t	typeref:enum:RespLine_t::HttpVersion_t
+i	parse.c	/^int i;$/;"	v
+info	http-tree.h	/^  char *info;$/;"	m	struct:RespLine_t
+key	handle.c	/^  char *key;$/;"	m	struct:kv	file:
+key	http-tree.h	/^  char *key;$/;"	m	struct:Body_t
+key	http-tree.h	/^  char *key;$/;"	m	struct:Header_t
+key	token.c	/^  char *key;$/;"	m	struct:KeyWord_t	file:
+keywords	token.c	/^struct KeyWord_t keywords[] = {$/;"	v	typeref:struct:KeyWord_t
+kind	http-tree.h	/^  enum HttpKind_t kind;$/;"	m	struct:Http_t	typeref:enum:Http_t::HttpKind_t
+kind	http-tree.h	/^  enum ReqKind_t kind;$/;"	m	struct:ReqLine_t	typeref:enum:ReqLine_t::ReqKind_t
+kind	http-tree.h	/^  enum RespKind_t kind;$/;"	m	struct:RespLine_t	typeref:enum:RespLine_t::RespKind_t
+kind	token.c	/^  enum TokenKind_t kind;$/;"	m	struct:KeyWord_t	typeref:enum:KeyWord_t::TokenKind_t	file:
+kind	token.h	/^  enum TokenKind_t kind;$/;"	m	struct:Token_t	typeref:enum:Token_t::TokenKind_t
+kprint	banksv.c	/^void kprint (const char *msg)$/;"	f
+kprint	filesv.c	/^void kprint (const char *msg)$/;"	f
+kprint	httpd.c	/^void kprint (const char *msg)$/;"	f
+kv	handle.c	/^struct kv{$/;"	s	file:
+kv_lookup	handle.c	/^static char *kv_lookup(char *key)$/;"	f	file:
+kv_print	handle.c	/^static void kv_print ()$/;"	f	file:
+lexeme	token.h	/^  char *lexeme;$/;"	m	struct:Token_t
+main	banksv.c	/^int main (int argc, char **argv)$/;"	f
+main	browser.c	/^int main(int argc, char *argv[])$/;"	f
+main	filesv.c	/^int main (int argc, char **argv)$/;"	f
+main	httpd.c	/^int main (int argc, char **argv)$/;"	f
+main	server.c	/^int main (int argc, char **argv)$/;"	f
+next	http-tree.h	/^  Body_t next;$/;"	m	struct:Body_t
+next	http-tree.h	/^  Header_t next;$/;"	m	struct:Header_t
+noPermission	handle.c	/^static char *noPermission = $/;"	v	file:
+outOfMemory	http-tree.c	/^void outOfMemory()$/;"	f
+parseBody	parse.c	/^char *parseBody (int fd, int contentLength)$/;"	f
+parseError	parse.c	/^void parseError(int fd)$/;"	f
+parseHeaders	parse.c	/^Header_t parseHeaders (int fd, int *bodyLength)$/;"	f
+recvfd	http.h	/^ssize_t recvfd(int socket, void *buffer, size_t length, int *fd)$/;"	f
+reqLine	http-tree.h	/^  ReqLine_t reqLine;$/;"	m	struct:Http_t
+respLine	http-tree.h	/^  RespLine_t respLine;$/;"	m	struct:Http_t
+sendfd	http.h	/^ssize_t sendfd(int socket, const void *buffer, size_t length, int fd)$/;"	f
+set_perms	chroot-setup.sh	/^set_perms() {$/;"	f
+temp	handle.c	/^static struct kv temp[16];$/;"	v	typeref:struct:kv	file:
+token	parse.c	/^struct Token_t token = {-1, 0};$/;"	v	typeref:struct:Token_t
+uri	http-tree.h	/^  char *uri;$/;"	m	struct:ReqLine_t
+value	handle.c	/^  char *value;$/;"	m	struct:kv	file:
+value	http-tree.h	/^  char *value;$/;"	m	struct:Body_t
+value	http-tree.h	/^  char *value;$/;"	m	struct:Header_t
+write_file	banksv.c	/^void write_file (int sockfd, const char *s)$/;"	f
+write_file	filesv.c	/^void write_file (int sockfd, const char *s)$/;"	f
+write_file	httpd.c	/^void write_file (int sockfd, const char *s)$/;"	f

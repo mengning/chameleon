@@ -720,7 +720,12 @@ struct wps_context {
 	 */
 	int (*cred_cb)(void *ctx, const struct wps_credential *cred);
 
-	/**
+    //lyc add cred_cb for add ap
+    //
+
+	int (*cred_cb2)(void *ctx, const struct wps_credential *cred);
+	
+    /**
 	 * event_cb - Event callback (state information about progress)
 	 * @ctx: Higher layer context data (cb_ctx)
 	 * @event: Event type

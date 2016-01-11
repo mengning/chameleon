@@ -27,6 +27,9 @@
 #include "sta_info.h"
 #include "wps_hostapd.h"
 
+#include <dirent.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 #ifdef CONFIG_WPS_UPNP
 #include "wps/wps_upnp.h"
@@ -63,6 +66,45 @@ static int wps_for_each(struct hostapd_iface *iface, void *ctx)
 	}
 
 	return 0;
+}
+static int wps_for_each2(struct hostapd_iface *iface, void *ctx)
+{
+	struct wps_for_each_data *data = ctx;
+	size_t j;
+
+	if (iface == NULL)
+		return 0;
+    //struct hostapd_data *hapd=iface->bss[0];
+    //int ret=data->func(hapd,data->ctx);
+    //return ret;
+    //iface->num_bss++;
+	//iface->bss = (struct hostapd_data **)realloc(iface->bss, iface->num_bss * sizeof(struct hostapd_data *));
+    struct hostapd_data *hapd=iface->bss[0];
+    int ret=data->func(hapd,data->ctx);
+    return ret;
+    
+    //for (j = 0; j < iface->num_bss; j++) {
+	//	struct hostapd_data *hapd = iface->bss[j];
+    //		int ret = data->func(hapd, data->ctx);
+	//	if (ret)
+    //		return ret;
+	//}
+
+	return 0;
+}
+static int hostapd_wps_for_each2(struct hostapd_data *hapd,
+				int (*func)(struct hostapd_data *h, void *ctx),
+				void *ctx)
+{
+	struct hostapd_iface *iface = hapd->iface;
+	struct wps_for_each_data data;
+	data.func = func;
+	data.ctx = ctx;
+	if (iface->interfaces == NULL ||
+	    iface->interfaces->for_each_interface == NULL)
+		return wps_for_each(iface, &data);
+	return iface->interfaces->for_each_interface(iface->interfaces,
+						     wps_for_each2, &data);
 }
 
 
@@ -249,6 +291,18 @@ static int str_starts(const char *str, const char *start)
 	return os_strncmp(str, start, os_strlen(start)) == 0;
 }
 
+static void wps_reload_config2(void *eloop_data, void *user_ctx)
+{
+	struct hostapd_iface *iface = eloop_data;
+
+	wpa_printf(MSG_DEBUG, "WPS: Reload configuration data");
+	if (iface->interfaces == NULL ||
+	    iface->interfaces->reload_config2(iface) < 0) {
+		wpa_printf(MSG_WARNING, "WPS: Failed to reload the updated "
+			   "configuration");
+	}
+}
+
 
 static void wps_reload_config(void *eloop_data, void *user_ctx)
 {
@@ -276,11 +330,10 @@ static void hapd_new_ap_event(struct hostapd_data *hapd, const u8 *attr,
 	}
 }
 
-
 static int hapd_wps_cred_cb(struct hostapd_data *hapd, void *ctx)
 {
 	const struct wps_credential *cred = ctx;
-	FILE *oconf, *nconf;
+	FILE *oconf, *nconf,*newf;
 	size_t len, i;
 	char *tmp_fname;
 	char buf[1024];
@@ -358,6 +411,149 @@ static int hapd_wps_cred_cb(struct hostapd_data *hapd, void *ctx)
 		os_free(tmp_fname);
 		return -1;
 	}
+
+//lyc
+//lyc_begin
+/*
+    nconf = fopen(tmp_fname, "w");
+    if (nconf == NULL) {
+		wpa_printf(MSG_WARNING, "WPS: Could not write updated "
+			   "configuration file");
+		os_free(tmp_fname);
+		fclose(oconf);
+		return -1;
+	}
+
+	fprintf(nconf, "# WPS configuration - START\n");
+	while (fgets(buf, sizeof(buf), oconf)) {
+			fprintf(nconf, "%s", buf);
+	}
+
+	fclose(oconf);
+
+
+	    
+
+        fprintf(nconf,"bss=wlan1_1\n");
+        fprintf(nconf, "wps_state=2\n");
+        
+        if (is_hex(cred->ssid, cred->ssid_len)) {
+            fprintf(nconf, "ssid2=");
+            for (i = 0; i < cred->ssid_len; i++)
+                fprintf(nconf, "%02x", cred->ssid[i]);
+            fprintf(nconf, "\n");
+        } else {
+            fprintf(nconf, "ssid=");
+            for (i = 0; i < cred->ssid_len; i++)
+                fputc(cred->ssid[i], nconf);
+            fprintf(nconf, "\n");
+        }
+
+        if ((cred->auth_type & (WPS_AUTH_WPA2 | WPS_AUTH_WPA2PSK)) &&
+            (cred->auth_type & (WPS_AUTH_WPA | WPS_AUTH_WPAPSK)))
+            wpa = 3;
+        else if (cred->auth_type & (WPS_AUTH_WPA2 | WPS_AUTH_WPA2PSK))
+            wpa = 2;
+        else if (cred->auth_type & (WPS_AUTH_WPA | WPS_AUTH_WPAPSK))
+            wpa = 1;
+        else
+            wpa = 0;
+
+        if (wpa) {
+            char *prefix;
+            fprintf(nconf, "wpa=%d\n", wpa);
+
+            fprintf(nconf, "wpa_key_mgmt=");
+            prefix = "";
+            if (cred->auth_type & (WPS_AUTH_WPA2 | WPS_AUTH_WPA)) {
+                fprintf(nconf, "WPA-EAP");
+                prefix = " ";
+            }
+            if (cred->auth_type & (WPS_AUTH_WPA2PSK | WPS_AUTH_WPAPSK))
+                fprintf(nconf, "%sWPA-PSK", prefix);
+            fprintf(nconf, "\n");
+
+            fprintf(nconf, "wpa_pairwise=");
+            prefix = "";
+            if (cred->encr_type & WPS_ENCR_AES) {
+                fprintf(nconf, "CCMP");
+                prefix = " ";
+            }
+            if (cred->encr_type & WPS_ENCR_TKIP) {
+                fprintf(nconf, "%sTKIP", prefix);
+            }
+            fprintf(nconf, "\n");
+
+            if (cred->key_len >= 8 && cred->key_len < 64) {
+                fprintf(nconf, "wpa_passphrase=");
+                for (i = 0; i < cred->key_len; i++)
+                    fputc(cred->key[i], nconf);
+                fprintf(nconf, "\n");
+            } else if (cred->key_len == 64) {
+                fprintf(nconf, "wpa_psk=");
+                for (i = 0; i < cred->key_len; i++)
+                    fputc(cred->key[i], nconf);
+                fprintf(nconf, "\n");
+            } else {
+                wpa_printf(MSG_WARNING, "WPS: Invalid key length %lu "
+                       "for WPA/WPA2",
+                       (unsigned long) cred->key_len);
+            }
+
+            fprintf(nconf, "auth_algs=1\n");
+        } else {
+            if ((cred->auth_type & WPS_AUTH_OPEN) &&
+                (cred->auth_type & WPS_AUTH_SHARED))
+                fprintf(nconf, "auth_algs=3\n");
+		else if (cred->auth_type & WPS_AUTH_SHARED)
+			fprintf(nconf, "auth_algs=2\n");
+		else
+			fprintf(nconf, "auth_algs=1\n");
+
+		if (cred->encr_type & WPS_ENCR_WEP && cred->key_idx <= 4) {
+			int key_idx = cred->key_idx;
+			if (key_idx)
+				key_idx--;
+			fprintf(nconf, "wep_default_key=%d\n", key_idx);
+			fprintf(nconf, "wep_key%d=", key_idx);
+			if (cred->key_len == 10 || cred->key_len == 26) {
+				// WEP key as a hex string 
+				for (i = 0; i < cred->key_len; i++)
+					fputc(cred->key[i], nconf);
+			} else {
+				// Raw WEP key; convert to hex 
+				for (i = 0; i < cred->key_len; i++)
+					fprintf(nconf, "%02x", cred->key[i]);
+			}
+			fprintf(nconf, "\n");
+		}
+	}
+
+	fprintf(nconf, "# WPS configuration - END\n");
+    fclose(nconf);
+
+	if (rename(tmp_fname, hapd->iface->config_fname) < 0) {
+		wpa_printf(MSG_WARNING, "WPS: Failed to rename the updated "
+			   "configuration file: %s", strerror(errno));
+		os_free(tmp_fname);
+		return -1;
+	}
+
+	os_free(tmp_fname);
+
+	// Schedule configuration reload after short period of time to allow
+	// EAP-WSC to be finished.
+	//
+	eloop_register_timeout(0, 100000, wps_reload_config, hapd->iface,
+			       NULL);
+
+	wpa_printf(MSG_DEBUG, "WPS: AP configuration updated");
+
+	return 0;
+  */
+//lyc end
+
+//sys start
 
 	nconf = fopen(tmp_fname, "w");
 	if (nconf == NULL) {
@@ -452,11 +648,11 @@ static int hapd_wps_cred_cb(struct hostapd_data *hapd, void *ctx)
 			fprintf(nconf, "wep_default_key=%d\n", key_idx);
 			fprintf(nconf, "wep_key%d=", key_idx);
 			if (cred->key_len == 10 || cred->key_len == 26) {
-				/* WEP key as a hex string */
+				// WEP key as a hex string 
 				for (i = 0; i < cred->key_len; i++)
 					fputc(cred->key[i], nconf);
 			} else {
-				/* Raw WEP key; convert to hex */
+				// Raw WEP key; convert to hex 
 				for (i = 0; i < cred->key_len; i++)
 					fprintf(nconf, "%02x", cred->key[i]);
 			}
@@ -466,7 +662,8 @@ static int hapd_wps_cred_cb(struct hostapd_data *hapd, void *ctx)
 
 	fprintf(nconf, "# WPS configuration - END\n");
 
-	multi_bss = 0;
+	multi_bss = 1;
+    fprintf(nconf,"%s","bss=wlan2\n");
 	while (fgets(buf, sizeof(buf), oconf)) {
 		if (os_strncmp(buf, "bss=", 4) == 0)
 			multi_bss = 1;
@@ -500,15 +697,406 @@ static int hapd_wps_cred_cb(struct hostapd_data *hapd, void *ctx)
 
 	os_free(tmp_fname);
 
-	/* Schedule configuration reload after short period of time to allow
-	 * EAP-WSC to be finished.
-	 */
+	// Schedule configuration reload after short period of time to allow
+	// EAP-WSC to be finished.
+	//
 	eloop_register_timeout(0, 100000, wps_reload_config, hapd->iface,
 			       NULL);
 
 	wpa_printf(MSG_DEBUG, "WPS: AP configuration updated");
 
 	return 0;
+//sts end
+}
+
+
+
+static int hapd_wps_cred_cb2(struct hostapd_data *hapd, void *ctx)
+{
+	const struct wps_credential *cred = ctx;
+	FILE *oconf, *nconf,*newf;
+	size_t len, i;
+	char *tmp_fname;
+	char buf[1024];
+	int multi_bss;
+	int wpa;
+
+	if (hapd->wps == NULL)
+		return 0;
+
+	wpa_hexdump_key(MSG_DEBUG, "WPS: Received Credential attribute",
+			cred->cred_attr, cred->cred_attr_len);
+
+	wpa_printf(MSG_DEBUG, "WPS: Received new AP Settings");
+	wpa_hexdump_ascii(MSG_DEBUG, "WPS: SSID", cred->ssid, cred->ssid_len);
+	wpa_printf(MSG_DEBUG, "WPS: Authentication Type 0x%x",
+		   cred->auth_type);
+	wpa_printf(MSG_DEBUG, "WPS: Encryption Type 0x%x", cred->encr_type);
+	wpa_printf(MSG_DEBUG, "WPS: Network Key Index %d", cred->key_idx);
+	wpa_hexdump_key(MSG_DEBUG, "WPS: Network Key",
+			cred->key, cred->key_len);
+	wpa_printf(MSG_DEBUG, "WPS: MAC Address " MACSTR,
+		   MAC2STR(cred->mac_addr));
+
+	if ((hapd->conf->wps_cred_processing == 1 ||
+	     hapd->conf->wps_cred_processing == 2) && cred->cred_attr) {
+		hapd_new_ap_event(hapd, cred->cred_attr, cred->cred_attr_len);
+	} else if (hapd->conf->wps_cred_processing == 1 ||
+		   hapd->conf->wps_cred_processing == 2) {
+		struct wpabuf *attr;
+		attr = wpabuf_alloc(200);
+		if (attr && wps_build_credential_wrap(attr, cred) == 0)
+			hapd_new_ap_event(hapd, wpabuf_head_u8(attr),
+					  wpabuf_len(attr));
+		wpabuf_free(attr);
+	} else
+		wpa_msg(hapd->msg_ctx, MSG_INFO, WPS_EVENT_NEW_AP_SETTINGS);
+
+	if (hapd->conf->wps_cred_processing == 1)
+		return 0;
+
+	os_memcpy(hapd->wps->ssid, cred->ssid, cred->ssid_len);
+	hapd->wps->ssid_len = cred->ssid_len;
+	hapd->wps->encr_types = cred->encr_type;
+	hapd->wps->auth_types = cred->auth_type;
+	if (cred->key_len == 0) {
+		os_free(hapd->wps->network_key);
+		hapd->wps->network_key = NULL;
+		hapd->wps->network_key_len = 0;
+	} else {
+		if (hapd->wps->network_key == NULL ||
+		    hapd->wps->network_key_len < cred->key_len) {
+			hapd->wps->network_key_len = 0;
+			os_free(hapd->wps->network_key);
+			hapd->wps->network_key = os_malloc(cred->key_len);
+			if (hapd->wps->network_key == NULL)
+				return -1;
+		}
+		hapd->wps->network_key_len = cred->key_len;
+		os_memcpy(hapd->wps->network_key, cred->key, cred->key_len);
+	}
+	hapd->wps->wps_state = WPS_STATE_CONFIGURED;
+
+	if (hapd->iface->config_fname == NULL)
+		return 0;
+	len = os_strlen(hapd->iface->config_fname) + 5;
+	tmp_fname = os_malloc(len);
+	if (tmp_fname == NULL)
+		return -1;
+	os_snprintf(tmp_fname, len, "%s-new", hapd->iface->config_fname);
+
+	oconf = fopen(hapd->iface->config_fname, "r");
+	if (oconf == NULL) {
+		wpa_printf(MSG_WARNING, "WPS: Could not open current "
+			   "configuration file");
+		os_free(tmp_fname);
+		return -1;
+	}
+
+//lyc
+//lyc_begin
+
+    nconf = fopen(tmp_fname, "w");
+    //nconf = fopen(hapd->iface->config_fname, "a+");
+    if (nconf == NULL) {
+		wpa_printf(MSG_WARNING, "WPS: Could not write updated "
+			   "configuration file");
+		os_free(tmp_fname);
+		fclose(oconf);
+		return -1;
+	}
+
+	fprintf(nconf, "# WPS configuration - START\n");
+	while (fgets(buf, sizeof(buf), oconf)) {
+		if(os_strncmp(buf,"bss=",4)==0)break;
+        fprintf(nconf, "%s", buf);
+        
+    }
+
+	//fclose(oconf);
+
+
+	    
+
+        fprintf(nconf,"bss=wlan2\n");
+        fprintf(nconf, "wps_state=2\n");
+        
+        if (is_hex(cred->ssid, cred->ssid_len)) {
+            fprintf(nconf, "ssid2=");
+            for (i = 0; i < cred->ssid_len; i++)
+                fprintf(nconf, "%02x", cred->ssid[i]);
+            fprintf(nconf, "\n");
+        } else {
+            fprintf(nconf, "ssid=");
+            for (i = 0; i < cred->ssid_len; i++)
+                fputc(cred->ssid[i], nconf);
+            fprintf(nconf, "\n");
+        }
+
+        if ((cred->auth_type & (WPS_AUTH_WPA2 | WPS_AUTH_WPA2PSK)) &&
+            (cred->auth_type & (WPS_AUTH_WPA | WPS_AUTH_WPAPSK)))
+            wpa = 3;
+        else if (cred->auth_type & (WPS_AUTH_WPA2 | WPS_AUTH_WPA2PSK))
+            wpa = 2;
+        else if (cred->auth_type & (WPS_AUTH_WPA | WPS_AUTH_WPAPSK))
+            wpa = 1;
+        else
+            wpa = 0;
+
+        if (wpa) {
+            char *prefix;
+            fprintf(nconf, "wpa=%d\n", wpa);
+
+            fprintf(nconf, "wpa_key_mgmt=");
+            prefix = "";
+            if (cred->auth_type & (WPS_AUTH_WPA2 | WPS_AUTH_WPA)) {
+                fprintf(nconf, "WPA-EAP");
+                prefix = " ";
+            }
+            if (cred->auth_type & (WPS_AUTH_WPA2PSK | WPS_AUTH_WPAPSK))
+                fprintf(nconf, "%sWPA-PSK", prefix);
+            fprintf(nconf, "\n");
+
+            fprintf(nconf, "wpa_pairwise=");
+            prefix = "";
+            if (cred->encr_type & WPS_ENCR_AES) {
+                fprintf(nconf, "CCMP");
+                prefix = " ";
+            }
+            if (cred->encr_type & WPS_ENCR_TKIP) {
+                fprintf(nconf, "%sTKIP", prefix);
+            }
+            fprintf(nconf, "\n");
+
+            if (cred->key_len >= 8 && cred->key_len < 64) {
+                fprintf(nconf, "wpa_passphrase=");
+                for (i = 0; i < cred->key_len; i++)
+                    fputc(cred->key[i], nconf);
+                fprintf(nconf, "\n");
+            } else if (cred->key_len == 64) {
+                fprintf(nconf, "wpa_psk=");
+                for (i = 0; i < cred->key_len; i++)
+                    fputc(cred->key[i], nconf);
+                fprintf(nconf, "\n");
+            } else {
+                wpa_printf(MSG_WARNING, "WPS: Invalid key length %lu "
+                       "for WPA/WPA2",
+                       (unsigned long) cred->key_len);
+            }
+
+            fprintf(nconf, "auth_algs=1\n");
+        } else {
+            if ((cred->auth_type & WPS_AUTH_OPEN) &&
+                (cred->auth_type & WPS_AUTH_SHARED))
+                fprintf(nconf, "auth_algs=3\n");
+		else if (cred->auth_type & WPS_AUTH_SHARED)
+			fprintf(nconf, "auth_algs=2\n");
+		else
+			fprintf(nconf, "auth_algs=1\n");
+
+		if (cred->encr_type & WPS_ENCR_WEP && cred->key_idx <= 4) {
+			int key_idx = cred->key_idx;
+			if (key_idx)
+				key_idx--;
+			fprintf(nconf, "wep_default_key=%d\n", key_idx);
+			fprintf(nconf, "wep_key%d=", key_idx);
+			if (cred->key_len == 10 || cred->key_len == 26) {
+				// WEP key as a hex string 
+				for (i = 0; i < cred->key_len; i++)
+					fputc(cred->key[i], nconf);
+			} else {
+				// Raw WEP key; convert to hex 
+				for (i = 0; i < cred->key_len; i++)
+					fprintf(nconf, "%02x", cred->key[i]);
+			}
+			fprintf(nconf, "\n");
+		}
+	}
+
+	fprintf(nconf, "# WPS configuration - END\n");
+    fclose(nconf);
+
+	if (rename(tmp_fname, hapd->iface->config_fname) < 0) {
+		wpa_printf(MSG_WARNING, "WPS: Failed to rename the updated "
+			   "configuration file: %s", strerror(errno));
+		os_free(tmp_fname);
+		return -1;
+	}
+
+	os_free(tmp_fname);
+
+	// Schedule configuration reload after short period of time to allow
+	// EAP-WSC to be finished.
+	//
+	eloop_register_timeout(0, 100000, wps_reload_config, hapd->iface,
+			       NULL);
+
+	wpa_printf(MSG_DEBUG, "WPS: AP configuration updated");
+
+	return 0;
+  
+//lyc end
+
+//sys start
+/*
+	nconf = fopen(tmp_fname, "w");
+	if (nconf == NULL) {
+		wpa_printf(MSG_WARNING, "WPS: Could not write updated "
+			   "configuration file");
+		os_free(tmp_fname);
+		fclose(oconf);
+		return -1;
+	}
+
+	fprintf(nconf, "# WPS configuration - START\n");
+
+	fprintf(nconf, "wps_state=2\n");
+
+	if (is_hex(cred->ssid, cred->ssid_len)) {
+		fprintf(nconf, "ssid2=");
+		for (i = 0; i < cred->ssid_len; i++)
+			fprintf(nconf, "%02x", cred->ssid[i]);
+		fprintf(nconf, "\n");
+	} else {
+		fprintf(nconf, "ssid=");
+		for (i = 0; i < cred->ssid_len; i++)
+			fputc(cred->ssid[i], nconf);
+		fprintf(nconf, "\n");
+	}
+
+	if ((cred->auth_type & (WPS_AUTH_WPA2 | WPS_AUTH_WPA2PSK)) &&
+	    (cred->auth_type & (WPS_AUTH_WPA | WPS_AUTH_WPAPSK)))
+		wpa = 3;
+	else if (cred->auth_type & (WPS_AUTH_WPA2 | WPS_AUTH_WPA2PSK))
+		wpa = 2;
+	else if (cred->auth_type & (WPS_AUTH_WPA | WPS_AUTH_WPAPSK))
+		wpa = 1;
+	else
+		wpa = 0;
+
+	if (wpa) {
+		char *prefix;
+		fprintf(nconf, "wpa=%d\n", wpa);
+
+		fprintf(nconf, "wpa_key_mgmt=");
+		prefix = "";
+		if (cred->auth_type & (WPS_AUTH_WPA2 | WPS_AUTH_WPA)) {
+			fprintf(nconf, "WPA-EAP");
+			prefix = " ";
+		}
+		if (cred->auth_type & (WPS_AUTH_WPA2PSK | WPS_AUTH_WPAPSK))
+			fprintf(nconf, "%sWPA-PSK", prefix);
+		fprintf(nconf, "\n");
+
+		fprintf(nconf, "wpa_pairwise=");
+		prefix = "";
+		if (cred->encr_type & WPS_ENCR_AES) {
+			fprintf(nconf, "CCMP");
+			prefix = " ";
+		}
+		if (cred->encr_type & WPS_ENCR_TKIP) {
+			fprintf(nconf, "%sTKIP", prefix);
+		}
+		fprintf(nconf, "\n");
+
+		if (cred->key_len >= 8 && cred->key_len < 64) {
+			fprintf(nconf, "wpa_passphrase=");
+			for (i = 0; i < cred->key_len; i++)
+				fputc(cred->key[i], nconf);
+			fprintf(nconf, "\n");
+		} else if (cred->key_len == 64) {
+			fprintf(nconf, "wpa_psk=");
+			for (i = 0; i < cred->key_len; i++)
+				fputc(cred->key[i], nconf);
+			fprintf(nconf, "\n");
+		} else {
+			wpa_printf(MSG_WARNING, "WPS: Invalid key length %lu "
+				   "for WPA/WPA2",
+				   (unsigned long) cred->key_len);
+		}
+
+		fprintf(nconf, "auth_algs=1\n");
+	} else {
+		if ((cred->auth_type & WPS_AUTH_OPEN) &&
+		    (cred->auth_type & WPS_AUTH_SHARED))
+			fprintf(nconf, "auth_algs=3\n");
+		else if (cred->auth_type & WPS_AUTH_SHARED)
+			fprintf(nconf, "auth_algs=2\n");
+		else
+			fprintf(nconf, "auth_algs=1\n");
+
+		if (cred->encr_type & WPS_ENCR_WEP && cred->key_idx <= 4) {
+			int key_idx = cred->key_idx;
+			if (key_idx)
+				key_idx--;
+			fprintf(nconf, "wep_default_key=%d\n", key_idx);
+			fprintf(nconf, "wep_key%d=", key_idx);
+			if (cred->key_len == 10 || cred->key_len == 26) {
+				// WEP key as a hex string 
+				for (i = 0; i < cred->key_len; i++)
+					fputc(cred->key[i], nconf);
+			} else {
+				// Raw WEP key; convert to hex 
+				for (i = 0; i < cred->key_len; i++)
+					fprintf(nconf, "%02x", cred->key[i]);
+			}
+			fprintf(nconf, "\n");
+		}
+	}
+
+	fprintf(nconf, "# WPS configuration - END\n");
+
+	multi_bss = 1;
+    fprintf(nconf,"%s","bss=wlan2\n");
+	while (fgets(buf, sizeof(buf), oconf)) {
+		if (os_strncmp(buf, "bss=", 4) == 0)
+			multi_bss = 1;
+		if (!multi_bss &&
+		    (str_starts(buf, "ssid=") ||
+		     str_starts(buf, "ssid2=") ||
+		     str_starts(buf, "auth_algs=") ||
+		     str_starts(buf, "wep_default_key=") ||
+		     str_starts(buf, "wep_key") ||
+		     str_starts(buf, "wps_state=") ||
+		     str_starts(buf, "wpa=") ||
+		     str_starts(buf, "wpa_psk=") ||
+		     str_starts(buf, "wpa_pairwise=") ||
+		     str_starts(buf, "rsn_pairwise=") ||
+		     str_starts(buf, "wpa_key_mgmt=") ||
+		     str_starts(buf, "wpa_passphrase="))) {
+			fprintf(nconf, "#WPS# %s", buf);
+		} else
+			fprintf(nconf, "%s", buf);
+	}
+
+	fclose(nconf);
+	fclose(oconf);
+
+	if (rename(tmp_fname, hapd->iface->config_fname) < 0) {
+		wpa_printf(MSG_WARNING, "WPS: Failed to rename the updated "
+			   "configuration file: %s", strerror(errno));
+		os_free(tmp_fname);
+		return -1;
+	}
+
+	os_free(tmp_fname);
+
+	// Schedule configuration reload after short period of time to allow
+	// EAP-WSC to be finished.
+	//
+	eloop_register_timeout(0, 100000, wps_reload_config2, hapd->iface,
+			       NULL);
+
+	wpa_printf(MSG_DEBUG, "WPS: AP configuration updated");
+
+	return 0;
+//sts end*/
+}
+
+static int hostapd_wps_cred_cb2(void *ctx, const struct wps_credential *cred)
+{
+	struct hostapd_data *hapd = ctx;
+	return hostapd_wps_for_each2(hapd, hapd_wps_cred_cb2, (void *) cred);
 }
 
 
@@ -773,6 +1361,80 @@ static int hostapd_wps_set_vendor_ext(struct hostapd_data *hapd,
 	return 0;
 }
 
+static int bz=0;
+static int flagbz=0;
+int fd[2];
+pid_t id_h;
+char line[30];
+/*lyc function begin*/
+/*
+int call_haha(const u8 *macaddr,const size_t len){
+    int i;
+    if(bz==0){
+        //if(pipe(fd)<0){
+        if (socketpair(AF_UNIX, SOCK_STREAM, 0, fd)){
+            printf("pipe error");
+            return -1;
+        }
+        if((id_h=fork())<0){
+            printf("fork error\n");
+            return -1;
+        }else{
+            bz=1;
+        }
+    }
+    size_t macsize=6;
+    if(bz==1){
+        if(id_h >0){//parent
+            close(fd[0]);
+            //printf("parent write %d byte\n",macsize);
+            //for( i=0;i<macsize;i++)
+            //    printf("%02x ",macaddr[i]+10);
+            //printf("\n");
+            write(fd[1],macaddr+10,6);
+        }else if(flagbz && id_h==0){//child
+            printf("flagbz\n");
+        }else if(flagbz==0 && id_h==0){//child
+            printf("in child\n");
+            close(fd[1]);
+            char pip_str[32]={'\0'};
+            //printf("fd:int: %d\n",fd[0]);
+            //inttostr(pip_str,fd[0]);
+            sprintf(pip_str,"%d",fd[0]);
+            printf("fd:s:   %s\n",pip_str);
+            //if(execl("/home/luyuncheng/Workspace/Myhostapd/Hostapd/Service/","./haha",s,(char *)0)<0)
+            if(execl("/home/luyuncheng/Workspace/Myhostapd/Hostapd/Service/./haha",pip_str,(char *)0)<0)
+                printf("execl error");
+            else
+                flagbz=1;
+        }
+    }
+}
+*/
+static int hostapd_wps_probe_req_rx2(void *ctx,const u8 *addr, const u8 *da, 
+                                   const u8 *bssid, const u8 *ie,size_t ie_len,
+                                   int ssi_signal)
+{
+    struct hostapd_data *hapd = ctx;
+    struct wpabuf *wps_ie;
+    struct ieee802_11_elems elems;
+    if(hapd->wps==NULL)
+        return 0;
+    if(ieee802_11_parse_elems(ie, ie_len, &elems, 0) == ParseFailed){
+        wpa_printf(MSG_DEBUG,"WPS_lyc:Could not parse ProbeReq from"
+                   MACSTR,MAC2STR(addr));
+        printf("lyc in wps_hostapd.c function hostapd_wps_probe_req_rx2 \ 
+                WPS:Could not parse ProbeReq\n");
+        return 0;
+    }
+    printf("***\n***\nlyc_wps_hostapd.c\n***\n***\n");
+  //  int i=0;
+  //  for(i=0;i<6;i++)
+  //      printf("%02x ",addr[i]);
+//    call_haha(addr,6);
+
+}
+/*lyc function end*/
 
 int hostapd_init_wps(struct hostapd_data *hapd,
 		     struct hostapd_bss_config *conf)
@@ -791,6 +1453,7 @@ int hostapd_init_wps(struct hostapd_data *hapd,
 
 	wps->cred_cb = hostapd_wps_cred_cb;
 	wps->event_cb = hostapd_wps_event_cb;
+    wps->cred_cb2 = hostapd_wps_cred_cb2;
 	wps->cb_ctx = hapd;
 
 	os_memset(&cfg, 0, sizeof(cfg));
@@ -980,7 +1643,7 @@ int hostapd_init_wps(struct hostapd_data *hapd,
 #endif /* CONFIG_WPS_UPNP */
 
 	hostapd_register_probereq_cb(hapd, hostapd_wps_probe_req_rx, hapd);
-
+	hostapd_register_probereq_cb(hapd, hostapd_wps_probe_req_rx2, hapd);
 	hapd->wps = wps;
 
 	return 0;

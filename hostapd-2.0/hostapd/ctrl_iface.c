@@ -34,7 +34,7 @@
 #include "config_file.h"
 #include "ctrl_iface.h"
 
-
+#include "crypto/sha1.h"
 struct wpa_ctrl_dst {
 	struct wpa_ctrl_dst *next;
 	struct sockaddr_un addr;
@@ -254,7 +254,7 @@ static int hostapd_ctrl_iface_wps_check_pin(
 static int hostapd_ctrl_iface_wps_nfc_tag_read(struct hostapd_data *hapd,
 					       char *pos)
 {
-	size_t len;
+size_t len;
 	struct wpabuf *buf;
 	int ret;
 
@@ -407,7 +407,63 @@ static int hostapd_ctrl_iface_wps_ap_pin(struct hostapd_data *hapd, char *txt,
 	return -1;
 }
 
+static int hostapd_ctrl_iface_wps_config2(struct hostapd_data *hapd, char *txt)
+{
+    //char txt[]={0154,0171,0143,'#',0246,0232,0132,0236,0127,0343,0142,025,076,0343,0137,0226,0245,0257,0136,0174,065,0345,0350,056,067,0143,0210,0155,0370,0175,041,0327,0375,0212,0202,0365};
+    struct hostapd_iface *iface = hapd->iface;
+    struct hostapd_data *hapd_iter;
+    struct hostapd_bss_config *conf_iter;
+    struct hostapd_ssid *ssid_iter;
+    struct hostapd_wpa_psk *psk_iter;
+    char *pos;
+    u8 new_psk[PMK_LEN];
+    char *ssid,*psk;
+    ssid = txt;
+    pos = os_strchr(txt,' ');
+    if(!pos)    return -1;
+    int ssid_len=pos-txt;
+    printf("pos at:%d\n",pos-txt);
+    // get pos ='\0' than pos++
+    *pos++='\0';
+    
+    pbkdf2_sha1(pos,ssid,ssid_len,4096,new_psk,32);
+    int i = 0;
+    int j = 0;
+    for(i = 0; i < iface->num_bss; i++)
+    {
+        hapd_iter = iface->bss[i];
+        conf_iter = hapd->conf;
+        ssid_iter = &(conf_iter->ssid);
+         psk_iter = ssid_iter->wpa_psk;
+        //if(os_strncmp(ssid_iter->ssid,"nouse",5)==0){
+        if(i==1){
+            conf_iter->ignore_broadcast_ssid = 0;
+            os_memset(ssid_iter->ssid, 0, HOSTAPD_MAX_SSID_LEN);
+            ssid_iter->ssid_len = os_strlen(ssid);
+            os_memcpy(ssid_iter->ssid, ssid, ssid_iter->ssid_len);
+            
+            //os_memset(&psk_iter->psk, 0, PMK_LEN);
+            for(j=0;j<PMK_LEN;j++)
+                psk_iter->psk[j]=0;
+            for(j=0;j<PMK_LEN;j++)
+                psk_iter->psk[j]=new_psk[j];
+            //os_memcpy(psk_iter->psk, pos, PMK_LEN);
 
+            printf("new ssid:%s\n",ssid_iter->ssid);
+            printf("new pmk\n");
+            for(j = 0; j < PMK_LEN; j++)
+            printf("0%o ",psk_iter->psk[j]);
+            printf("\nend new\n");
+            break;
+        }
+    }
+    if(i==(int)iface->num_bss){
+        printf("===========\n=========\nlyc:No other userful room for new ap\n");
+        return -1;
+    }else{
+        return 0;
+    }
+}
 static int hostapd_ctrl_iface_wps_config(struct hostapd_data *hapd, char *txt)
 {
 	char *pos;
@@ -938,7 +994,7 @@ static void hostapd_ctrl_iface_receive(int sock, void *eloop_ctx,
 		reply_len = hostapd_ctrl_iface_wps_ap_pin(hapd, buf + 11,
 							  reply, reply_size);
 	} else if (os_strncmp(buf, "WPS_CONFIG ", 11) == 0) {
-		if (hostapd_ctrl_iface_wps_config(hapd, buf + 11) < 0)
+		if (hostapd_ctrl_iface_wps_config2(hapd, buf + 11) < 0)
 			reply_len = -1;
 #ifdef CONFIG_WPS_NFC
 	} else if (os_strncmp(buf, "WPS_NFC_TAG_READ ", 17) == 0) {

@@ -10,9 +10,8 @@
 #define HOSTAPD_H
 
 #include "common/defs.h"
-#include "radius/radius_das.h"
 #include "ap_config.h"
-
+//#include "../../hostapd/main.h"
 struct wpa_driver_ops;
 struct wpa_ctrl_dst;
 struct radius_server_data;
@@ -24,19 +23,20 @@ struct ieee80211_ht_capabilities;
 struct full_dynamic_vlan;
 enum wps_event;
 union wps_event_data;
-struct hostapd_iface;
 
+struct hostapd_iface;
 
 struct hapd_interfaces {
 	int (*reload_config)(struct hostapd_iface *iface);
+	int (*reload_config2)(struct hostapd_iface *iface);
 	struct hostapd_config * (*config_read_cb)(const char *config_fname);
 	int (*ctrl_iface_init)(struct hostapd_data *hapd);
 	void (*ctrl_iface_deinit)(struct hostapd_data *hapd);
-	int (*for_each_interface)(struct hapd_interfaces *interfaces,
+    int (*for_each_interface)(struct hapd_interfaces *interfaces,
 				  int (*cb)(struct hostapd_iface *iface,
 					    void *ctx), void *ctx);
 	int (*driver_init)(struct hostapd_iface *iface);
-	void (*set_security_params)(struct hostapd_bss_config *bss);
+    void (*set_security_params)(struct hostapd_bss_config *bss);
 
 	size_t count;
 	int global_ctrl_sock;
@@ -263,15 +263,19 @@ struct hostapd_iface {
 };
 
 /* hostapd.c */
+
 int hostapd_for_each_interface(struct hapd_interfaces *interfaces,
 			       int (*cb)(struct hostapd_iface *iface,
 					 void *ctx), void *ctx);
+ void hostapd_reload_bss(struct hostapd_data *hapd);
 int hostapd_reload_config(struct hostapd_iface *iface);
+int hostapd_reload_config2(struct hostapd_iface *iface);
 struct hostapd_data *
 hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
 		       struct hostapd_config *conf,
 		       struct hostapd_bss_config *bss);
 int hostapd_setup_interface(struct hostapd_iface *iface);
+int hostapd_setup_interface2(struct hostapd_iface *iface);
 int hostapd_setup_interface_complete(struct hostapd_iface *iface, int err);
 void hostapd_interface_deinit(struct hostapd_iface *iface);
 void hostapd_interface_free(struct hostapd_iface *iface);
@@ -308,9 +312,6 @@ const struct hostapd_eap_user *
 hostapd_get_eap_user(struct hostapd_data *hapd, const u8 *identity,
 		     size_t identity_len, int phase2);
 
-int hostapd_setup_bss(struct hostapd_data *hapd, int first);
 
-enum radius_das_res
-hostapd_das_disconnect(void *ctx, struct radius_das_attrs *attr);
 
 #endif /* HOSTAPD_H */

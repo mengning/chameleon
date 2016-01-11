@@ -284,7 +284,8 @@ static int hostapd_derive_psk(struct hostapd_ssid *ssid)
 		    4096, ssid->wpa_psk->psk, PMK_LEN);
 	wpa_hexdump_key(MSG_DEBUG, "PSK (from passphrase)",
 			ssid->wpa_psk->psk, PMK_LEN);
-	return 0;
+	printf("lyc:pmk:\n%s\n",ssid->wpa_psk);
+    return 0;
 }
 
 

@@ -37,15 +37,6 @@
 #include "wnm_ap.h"
 #include "ieee802_11.h"
 
-void mac_to_ascii(u8 *mac_ascii, const u8 *addr)
-{
-    char mac_str[MAC_ASCII_LEN + 1];
-    int i;
-
-    sprintf(mac_str, MACSTR, MAC2STR(addr));
-    for (i = 0; i< MAC_ASCII_LEN; i++)
-        mac_ascii[i] = (u8)mac_str[i];
-}
 
 u8 * hostapd_eid_supp_rates(struct hostapd_data *hapd, u8 *eid)
 {
@@ -561,7 +552,6 @@ static void handle_auth(struct hostapd_data *hapd,
 
 	sta = ap_sta_add(hapd, mgmt->sa);
 	if (!sta) {
-		wpa_printf(MSG_DEBUG, "add station "MACSTR" failed in handle_auth\n", MAC2STR(mgmt->sa));
 		resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
 		goto fail;
 	}
@@ -1574,6 +1564,8 @@ static void handle_action(struct hostapd_data *hapd,
 
 
 /**
+ * hostapd_mgmt_rx调用这个函数来处理ieee80211协议
+ * lyc ： iee80211的管理帧 在里面接收驱动发过来的数据，然后分发，这里面会调用handle_pro_req
  * ieee802_11_mgmt - process incoming IEEE 802.11 management frames
  * @hapd: hostapd BSS data structure (the BSS to which the management frame was
  * sent to)

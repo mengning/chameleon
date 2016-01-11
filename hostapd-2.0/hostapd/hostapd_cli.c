@@ -137,7 +137,7 @@ static struct wpa_ctrl * hostapd_cli_open_connection(const char *ifname)
 	if (cfile == NULL)
 		return NULL;
 	snprintf(cfile, flen, "%s/%s", ctrl_iface_dir, ifname);
-
+    printf("lyc cfile:%s\n",cfile);
 	ctrl_conn = wpa_ctrl_open(cfile);
 	free(cfile);
 	return ctrl_conn;
@@ -493,7 +493,7 @@ static int hostapd_cli_cmd_wps_ap_pin(struct wpa_ctrl *ctrl, int argc,
 	return wpa_ctrl_command(ctrl, buf);
 }
 
-
+//lyc:更改wps配置
 static int hostapd_cli_cmd_wps_config(struct wpa_ctrl *ctrl, int argc,
 				      char *argv[])
 {
@@ -1018,9 +1018,17 @@ static void hostapd_cli_action(struct wpa_ctrl *ctrl)
 
 int main(int argc, char *argv[])
 {
-	int warning_displayed = 0;
+	int warning_displayed = 1;
 	int c;
 	int daemonize = 0;
+
+    int i;
+    printf("argc:%d\n",argc);
+    for(i=0;i<argc;i++)
+    {
+        printf("argv[%d]:%s\n",i,argv[i]);
+    }
+
 
 	if (os_program_init())
 		return -1;
@@ -1059,7 +1067,7 @@ int main(int argc, char *argv[])
 	}
 
 	interactive = (argc == optind) && (action_file == NULL);
-
+    printf("lyc interactive:%d\n",interactive);
 	if (interactive) {
 		printf("%s\n\n%s\n\n", hostapd_cli_version,
 		       hostapd_cli_license);

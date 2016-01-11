@@ -54,15 +54,16 @@ OBJS += ../src/ap/preauth_auth.o
 OBJS += ../src/ap/pmksa_cache_auth.o
 OBJS += ../src/ap/ieee802_11_shared.o
 OBJS += ../src/ap/beacon.o
-OBJS += ../src/ap/cJSON.o
 
 OBJS_c = hostapd_cli.o ../src/common/wpa_ctrl.o ../src/utils/os_$(CONFIG_OS).o
+OBJS_lyc = ../Service/haha.o ../Service/Ctrl.o ../src/common/wpa_ctrl.o ../src/utils/os_$(CONFIG_OS).o 
+#OBJS_c = driver_nl80211.o ../src/common/wpa_ctrl.o ../src/utils/os_$(CONFIG_OS).o
 
 NEED_RC4=y
 NEED_AES=y
 NEED_MD5=y
 NEED_SHA1=y
-LIBS += -lm
+
 OBJS += ../src/drivers/drivers.o
 CFLAGS += -DHOSTAPD
 
@@ -85,16 +86,18 @@ CONFIG_ELOOP=eloop
 endif
 OBJS += ../src/utils/$(CONFIG_ELOOP).o
 OBJS_c += ../src/utils/$(CONFIG_ELOOP).o
+OBJS_lyc += ../src/utils/$(CONFIG_ELOOP).o
 OBJS += ../src/utils/common.o
 OBJS += ../src/utils/wpa_debug.o
 OBJS_c += ../src/utils/wpa_debug.o
+OBJS_lyc += ../src/utils/wpa_debug.o
 OBJS += ../src/utils/wpabuf.o
 OBJS += ../src/utils/os_$(CONFIG_OS).o
 OBJS += ../src/utils/ip_addr.o
 
 OBJS += ../src/common/ieee802_11_common.o
 OBJS += ../src/common/wpa_common.o
-
+OBJS += ../src/common/wpa_ctrl.o
 OBJS += ../src/eapol_auth/eapol_auth_sm.o
 
 
@@ -800,8 +803,10 @@ OBJS += ../src/drivers/driver_common.o
 
 ifdef CONFIG_WPA_CLI_EDIT
 OBJS_c += ../src/utils/edit.o
+OBJS_lyc += ../src/utils/edit.o
 else
 OBJS_c += ../src/utils/edit_simple.o
+OBJS_lyc += ../src/utils/edit_simple.o
 endif
 
 ifdef CONFIG_NO_STDOUT_DEBUG
@@ -818,7 +823,7 @@ LIBS += -lsqlite3
 LIBS_h += -lsqlite3
 endif
 
-ALL=hostapd hostapd_cli
+ALL=hostapd hostapd_cli lyc_ctrl
 
 all: verify_config $(ALL)
 
@@ -860,10 +865,18 @@ hostapd: $(BCHECK) $(OBJS)
 
 ifdef CONFIG_WPA_TRACE
 OBJS_c += ../src/utils/trace.o
+OBJS_lyc += ../src/utils/trace.o
 endif
 hostapd_cli: $(OBJS_c)
 	$(Q)$(CC) $(LDFLAGS) -o hostapd_cli $(OBJS_c) $(LIBS_c)
 	@$(E) "  LD " $@
+#lyc_cli:$(OBJS_c)
+#	$(Q)$(CC) $(LDFLAGS) -o lyc_cli $(OBJS_c) $(LIBS_c)
+#	 @$(E) "  LD " $@
+lyc_ctrl:$(OBJS_lyc)
+	$(Q)$(CC) $(LDFLAGS) -o ../Service/haha $(OBJS_lyc) $(LIBS_c)
+	 @$(E) "  LD " $@
+
 
 NOBJS = nt_password_hash.o ../src/crypto/ms_funcs.o $(SHA1OBJS) ../src/crypto/md5.o
 ifdef NEED_RC4

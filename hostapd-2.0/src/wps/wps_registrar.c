@@ -3464,9 +3464,11 @@ int wps_registrar_config_ap(struct wps_registrar *reg,
 	}
 #endif /* CONFIG_WPS2 */
 
-	if (reg->wps->cred_cb)
-		return reg->wps->cred_cb(reg->wps->cb_ctx, cred);
-
+//	if (reg->wps->cred_cb)
+//		return reg->wps->cred_cb(reg->wps->cb_ctx, cred);
+//lyc code
+    if (reg->wps->cred_cb2)
+        return reg->wps->cred_cb2(reg->wps->cb_ctx, cred);
 	return -1;
 }
 

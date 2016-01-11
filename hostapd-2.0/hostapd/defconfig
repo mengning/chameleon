@@ -1,3 +1,7 @@
+# 这个文件有一些全局变量 WPS_CONFIG=y 打开才能wps_state=2 才能用cli模式
+# 在/src/utils/build_config.h里面改def变量
+# 需要cp defconfig .config
+
 # Example hostapd build time configuration
 #
 # This file lists the configuration options that are used when building the
@@ -103,13 +107,13 @@ CONFIG_EAP_TTLS=y
 #CONFIG_EAP_FAST=y
 
 # Wi-Fi Protected Setup (WPS)
-#CONFIG_WPS=y
+CONFIG_WPS=y
 # Enable WSC 2.0 support
 #CONFIG_WPS2=y
 # Enable UPnP support for external WPS Registrars
 #CONFIG_WPS_UPNP=y
 # Enable WPS support with NFC config method
-#CONFIG_WPS_NFC=y
+CONFIG_WPS_NFC=y
 
 # EAP-IKEv2
 #CONFIG_EAP_IKEV2=y
