@@ -578,7 +578,7 @@ static struct sta_info * hostapd_das_find_sta(struct hostapd_data *hapd,
 }
 
 
-static enum radius_das_res
+enum radius_das_res
 hostapd_das_disconnect(void *ctx, struct radius_das_attrs *attr)
 {
 	struct hostapd_data *hapd = ctx;
@@ -611,7 +611,7 @@ hostapd_das_disconnect(void *ctx, struct radius_das_attrs *attr)
  * initialized. Most of the modules that are initialized here will be
  * deinitialized in hostapd_cleanup().
  */
-static int hostapd_setup_bss(struct hostapd_data *hapd, int first)
+int hostapd_setup_bss(struct hostapd_data *hapd, int first)
 {
 	struct hostapd_bss_config *conf = hapd->conf;
 	u8 ssid[HOSTAPD_MAX_SSID_LEN + 1];

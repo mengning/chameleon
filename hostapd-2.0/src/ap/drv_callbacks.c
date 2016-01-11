@@ -10,6 +10,8 @@
 
 #include "utils/common.h"
 #include "radius/radius.h"
+#include "radius/radius_client.h"
+#include "radius/radius_das.h"
 #include "drivers/driver.h"
 #include "common/ieee802_11_defs.h"
 #include "common/ieee802_11_common.h"
@@ -19,16 +21,27 @@
 #include "wnm_ap.h"
 #include "hostapd.h"
 #include "ieee802_11.h"
+#include "ieee802_11_auth.h"
 #include "sta_info.h"
 #include "accounting.h"
 #include "tkip_countermeasures.h"
 #include "ieee802_1x.h"
 #include "wpa_auth.h"
+#include "wpa_auth_glue.h"
 #include "wps_hostapd.h"
 #include "ap_drv_ops.h"
 #include "ap_config.h"
 #include "hw_features.h"
+#include "authsrv.h"
+#include "iapp.h"
+#include "vlan_init.h"
+#include <sys/types.h>
+#include <unistd.h>
+#include <net/if.h>
+#include "cJSON.h"
+#include "string.h"
 
+extern int wpa_debug_level;
 
 int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			const u8 *req_ies, size_t req_ies_len, int reassoc)
@@ -525,7 +538,7 @@ static void hostapd_action_rx(struct hostapd_data *hapd,
 #ifdef NEED_AP_MLME
 
 #define HAPD_BROADCAST ((struct hostapd_data *) -1)
-
+/*
 static struct hostapd_data * get_hapd_bssid(struct hostapd_iface *iface,
 					    const u8 *bssid)
 {
@@ -544,19 +557,295 @@ static struct hostapd_data * get_hapd_bssid(struct hostapd_iface *iface,
 
 	return NULL;
 }
+*/
 
+static int hostapd_setup_bss_dynamically(struct hostapd_data *hapd)
+{
+	struct hostapd_bss_config *conf = hapd->conf;
+
+	if (conf->wmm_enabled < 0)
+		conf->wmm_enabled = hapd->iconf->ieee80211n;
+
+	if (hostapd_setup_wpa_psk(conf)) {
+		wpa_printf(MSG_ERROR, "WPA-PSK setup failed.");
+		return -1;
+	}
+
+	if (wpa_debug_level == MSG_MSGDUMP)
+		conf->radius->msg_dumps = 1;
+#ifndef CONFIG_NO_RADIUS
+	hapd->radius = radius_client_init(hapd, conf->radius);
+	if (hapd->radius == NULL) {
+		wpa_printf(MSG_ERROR, "RADIUS client initialization failed.");
+		return -1;
+	}
+
+	if (hapd->conf->radius_das_port) {
+		struct radius_das_conf das_conf;
+		os_memset(&das_conf, 0, sizeof(das_conf));
+		das_conf.port = hapd->conf->radius_das_port;
+		das_conf.shared_secret = hapd->conf->radius_das_shared_secret;
+		das_conf.shared_secret_len =
+			hapd->conf->radius_das_shared_secret_len;
+		das_conf.client_addr = &hapd->conf->radius_das_client_addr;
+		das_conf.time_window = hapd->conf->radius_das_time_window;
+		das_conf.require_event_timestamp =
+			hapd->conf->radius_das_require_event_timestamp;
+		das_conf.ctx = hapd;
+		das_conf.disconnect = hostapd_das_disconnect;
+		hapd->radius_das = radius_das_init(&das_conf);
+		if (hapd->radius_das == NULL) {
+			wpa_printf(MSG_ERROR, "RADIUS DAS initialization "
+				   "failed.");
+			return -1;
+		}
+	}
+#endif /* CONFIG_NO_RADIUS */
+
+	if (hostapd_acl_init(hapd)) {
+		wpa_printf(MSG_ERROR, "ACL initialization failed.");
+		return -1;
+	}
+	if (hostapd_init_wps(hapd, conf))
+		return -1;
+
+	if (authsrv_init(hapd) < 0)
+		return -1;
+
+	if (ieee802_1x_init(hapd)) {
+		wpa_printf(MSG_ERROR, "IEEE 802.1X initialization failed.");
+		return -1;
+	}
+
+	if (hapd->conf->wpa && hostapd_setup_wpa(hapd))
+		return -1;
+
+	if (accounting_init(hapd)) {
+		wpa_printf(MSG_ERROR, "Accounting initialization failed.");
+		return -1;
+	}
+
+	if (hapd->conf->ieee802_11f &&
+	    (hapd->iapp = iapp_init(hapd, hapd->conf->iapp_iface)) == NULL) {
+		wpa_printf(MSG_ERROR, "IEEE 802.11F (IAPP) initialization "
+			   "failed.");
+		return -1;
+	}
+
+#ifdef CONFIG_INTERWORKING
+	if (gas_serv_init(hapd)) {
+		wpa_printf(MSG_ERROR, "GAS server initialization failed");
+		return -1;
+	}
+#endif /* CONFIG_INTERWORKING */
+
+	if (hapd->iface->interfaces &&
+	    hapd->iface->interfaces->ctrl_iface_init &&
+	    hapd->iface->interfaces->ctrl_iface_init(hapd)) {
+		wpa_printf(MSG_ERROR, "Failed to setup control interface");
+		return -1;
+	}
+
+	if (!hostapd_drv_none(hapd) && vlan_init(hapd)) {
+		wpa_printf(MSG_ERROR, "VLAN initialization failed.");
+		return -1;
+	}
+
+	if (hapd->wpa_auth && wpa_init_keys(hapd->wpa_auth) < 0)
+		return -1;
+
+	if (hapd->driver && hapd->driver->set_operstate)
+		hapd->driver->set_operstate(hapd->drv_priv, 1);
+
+	return 0;
+}
+
+#define SERV_IP "115.28.13.102"
+#define SERV_PORT 8080
+
+static char *hostapd_gen_http_req(const u8 *sa)
+{
+	int sockfd, k;
+	struct sockaddr_in serv_addr;
+	char url[4096], buf[1024], *mac, json[64];
+	cJSON *json_psk, *json_mac;
+	size_t i = 0, j = 0;
+
+	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+		printf("--------socket 生成失败！--------");
+		goto error;
+	}
+
+	memset(&serv_addr, 0, sizeof(serv_addr));
+	serv_addr.sin_family = AF_INET; //协议簇
+	serv_addr.sin_port = htons(SERV_PORT); //端口号
+	serv_addr.sin_addr.s_addr = inet_addr(SERV_IP); //ip 地址
+
+	if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+		printf("--------服务器连接失败！--------");
+		goto error;
+	}
+
+	wpa_printf(MSG_DEBUG, "-------Request 请求的 STA 的硬件地址：" MACSTR, MAC2STR(sa));
+	mac = (char *)malloc(64);
+	sprintf(mac, MACSTR, MAC2STR(sa));	
+	
+	//准备 HTTP 协议
+	memset(url, 0, 4096);
+	sprintf(url,"%s%s HTTP/1.1\r\n", "GET /ChameleonAC/Select?mac=", mac);
+	strcat(url, "Host: 115.28.13.102:8080\r\n");
+	strcat(url, "User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:43.0) Gecko/20100101 Firefox/43.0\r\n");
+	strcat(url, "\r\n");
+
+	printf("--------STA 设备：%s 正在发送 http 请求获取密码！--------\n", mac);
+
+	if (write(sockfd, url, strlen(url)) < 0) { //发送 http 请求
+		printf("--------发送 http 请求失败！--------");
+		goto error;
+	}
+
+	if (read(sockfd, buf, sizeof(buf)) < 0) {
+		printf("--------接收服务器返回消息失败！--------");
+		goto error;
+	}
+
+	//读取 HTTP Response
+	for (k = 0; k < 5; k++) {
+		while (buf[i] != '\n') {
+			i++;
+		}
+		i++;
+	}
+	i += 2;
+
+	while (!isspace(buf[i])) {
+		json[j] = buf[i];
+		i++;
+		j++;
+	}
+
+	//判断返回值
+	if (strcmp(json, "-1") == 0) {
+		printf("--------STA 未注册，请先注册！--------");
+		goto error;
+	}
+
+	//解析 json
+	cJSON *root = cJSON_Parse(json);
+	if (root) {
+		json_psk = cJSON_GetObjectItem(root, "psk");
+		json_mac = cJSON_GetObjectItem(root, "mac");
+		if (json_psk && json_mac && (strcmp(mac, json_mac->valuestring) == 0)) {
+			printf("--------密码是：%s--------\n", json_psk->valuestring);
+			return json_psk->valuestring;
+		} else {
+			printf("--------未能获取 JSON 字符串！--------");
+			goto error;
+		}
+	} else {
+		printf("--------未能获取 JSON 文档！--------");
+		goto error;
+	}
+
+	cJSON_Delete(root);
+	close(sockfd);
+	os_free(mac);
+	
+error:
+	return NULL;
+}
+
+static struct hostapd_data * get_hapd_ssid(struct hostapd_data *hapd,
+					    const u8 *bssid, const u8 *sa, const u16 fc)
+{
+	struct hostapd_iface *iface = hapd->iface;
+	size_t i;
+	u8 mac_ascii[MAC_ASCII_LEN];
+	struct hostapd_config *conf;
+	char *psk;
+
+	if (bssid == NULL)
+		return NULL;
+
+	if (bssid[0] == 0xff && bssid[1] == 0xff && bssid[2] == 0xff &&
+	    bssid[3] == 0xff && bssid[4] == 0xff && bssid[5] == 0xff)
+		return HAPD_BROADCAST;
+
+	if (os_memcmp(bssid, iface->bss[0]->own_addr, ETH_ALEN) != 0)
+		return NULL;
+
+	//判断帧类型, 若是 Probe 帧, 则返回初始 ssid
+	if ((WLAN_FC_GET_TYPE(fc) == WLAN_FC_TYPE_MGMT 
+			&& WLAN_FC_GET_STYPE(fc) == WLAN_FC_STYPE_PROBE_REQ)
+		|| (WLAN_FC_GET_TYPE(fc) == WLAN_FC_TYPE_MGMT 
+			&& WLAN_FC_GET_STYPE(fc) == WLAN_FC_STYPE_PROBE_RESP))
+		return iface->bss[0];
+
+	mac_to_ascii(mac_ascii, sa);
+	for (i = 1; i < iface->num_bss; i++) {
+		if (os_memcmp(mac_ascii, iface->bss[i]->conf->ssid.ssid, iface->bss[i]->conf->ssid.ssid_len) == 0) {
+			wpa_printf(MSG_DEBUG, "发现 STA 设备: " MACSTR, MAC2STR(sa));
+			return iface->bss[i];
+		}
+	}
+
+	//判断帧类型, 若是认证帧，则开始准备新建 ssid
+	if (WLAN_FC_GET_TYPE(fc) == WLAN_FC_TYPE_MGMT
+		&& WLAN_FC_GET_STYPE(fc) == WLAN_FC_STYPE_AUTH)	{
+		size_t index;
+
+		wpa_printf(MSG_DEBUG, "根据 MAC 地址新建 BSS：" MACSTR, MAC2STR(sa));
+
+		psk = (char *)malloc(64);
+		psk = hostapd_gen_http_req(sa);
+		if (psk == NULL ) {
+			printf("--------未能成功获取密码！--------");
+			return NULL;
+		}
+		printf("--------成功获得密码，开始创建 AP！--------\n");
+
+		iface->num_bss++;
+		iface->bss = (struct hostapd_data **)realloc(iface->bss, 
+						iface->num_bss * sizeof(struct hostapd_data *));//分配内存
+		index = iface->num_bss - 1;
+
+		conf = iface->interfaces->config_read_cb(iface->config_fname); //接口配置
+		conf->bss->ssid.ssid_len = MAC_ASCII_LEN;
+		memcpy(conf->bss->ssid.ssid, mac_ascii, MAC_ASCII_LEN);
+
+		os_free(conf->bss->ssid.wpa_passphrase);
+		conf->bss->ssid.wpa_passphrase = os_strdup(psk); //配置密码
+		
+		iface->interfaces->set_security_params(conf->bss);
+		iface->bss[index] = hostapd_alloc_bss_data(iface, conf,
+					       					conf->bss); //数据
+
+		iface->bss[index]->driver = iface->bss[0]->driver; //驱动
+		iface->bss[index]->drv_priv = iface->bss[0]->drv_priv;
+		memcpy(iface->bss[index]->own_addr, iface->bss[0]->own_addr, ETH_ALEN);
+
+		if (hostapd_setup_bss_dynamically(iface->bss[index])) //新建 bss
+			return NULL;
+
+		wpa_printf(MSG_DEBUG, "当前 BSS 总数量: %d", (int)iface->num_bss);
+		return iface->bss[index];
+	}
+	
+	return NULL;
+}
 
 static void hostapd_rx_from_unknown_sta(struct hostapd_data *hapd,
 					const u8 *bssid, const u8 *addr,
 					int wds)
 {
-	hapd = get_hapd_bssid(hapd->iface, bssid);
+	wpa_printf(MSG_DEBUG, "错误, STA 物理地址: " MACSTR, MAC2STR(addr));
+
+	hapd = get_hapd_ssid(hapd, bssid, addr, 3 << 2);
 	if (hapd == NULL || hapd == HAPD_BROADCAST)
 		return;
 
 	ieee802_11_rx_from_unknown(hapd, addr, wds);
 }
-
 
 static void hostapd_mgmt_rx(struct hostapd_data *hapd, struct rx_mgmt *rx_mgmt)
 {
@@ -564,17 +853,18 @@ static void hostapd_mgmt_rx(struct hostapd_data *hapd, struct rx_mgmt *rx_mgmt)
 	const struct ieee80211_hdr *hdr;
 	const u8 *bssid;
 	struct hostapd_frame_info fi;
+	u16 fc;
 
 	hdr = (const struct ieee80211_hdr *) rx_mgmt->frame;
 	bssid = get_hdr_bssid(hdr, rx_mgmt->frame_len);
 	if (bssid == NULL)
 		return;
 
-	hapd = get_hapd_bssid(iface, bssid);
-	if (hapd == NULL) {
-		u16 fc;
-		fc = le_to_host16(hdr->frame_control);
+	fc = le_to_host16(hdr->frame_control);
 
+	//Probe 帧
+	hapd = get_hapd_ssid(hapd, bssid, ((struct ieee80211_mgmt *)rx_mgmt->frame)->sa, fc);
+	if (hapd == NULL) {
 		/*
 		 * Drop frames to unknown BSSIDs except for Beacon frames which
 		 * could be used to update neighbor information.
@@ -643,14 +933,16 @@ static void hostapd_rx_action(struct hostapd_data *hapd,
 
 
 static void hostapd_mgmt_tx_cb(struct hostapd_data *hapd, const u8 *buf,
-			       size_t len, u16 stype, int ok)
+			       size_t len, u16 type, int ok, const u8 *dst)
 {
 	struct ieee80211_hdr *hdr;
 	hdr = (struct ieee80211_hdr *) buf;
-	hapd = get_hapd_bssid(hapd->iface, get_hdr_bssid(hdr, len));
+
+	//收到 auth 帧事件后调用
+	hapd = get_hapd_ssid(hapd, get_hdr_bssid(hdr, len), dst, type);
 	if (hapd == NULL || hapd == HAPD_BROADCAST)
 		return;
-	ieee802_11_mgmt_cb(hapd, buf, len, stype, ok);
+	ieee802_11_mgmt_cb(hapd, buf, len, WLAN_FC_GET_STYPE(type), ok);
 }
 
 #endif /* NEED_AP_MLME */
@@ -701,6 +993,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			  union wpa_event_data *data)
 {
 	struct hostapd_data *hapd = ctx;
+	u16 ty; /* type */
 #ifndef CONFIG_NO_STDOUT_DEBUG
 	int level = MSG_DEBUG;
 
@@ -739,11 +1032,13 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 #ifdef NEED_AP_MLME
 	case EVENT_TX_STATUS:
 		switch (data->tx_status.type) {
-		case WLAN_FC_TYPE_MGMT:
+		case WLAN_FC_TYPE_MGMT: //其他管理帧
+			ty = (data->tx_status.type << 2) | (data->tx_status.stype << 4);
 			hostapd_mgmt_tx_cb(hapd, data->tx_status.data,
 					   data->tx_status.data_len,
-					   data->tx_status.stype,
-					   data->tx_status.ack);
+					   ty,
+					   data->tx_status.ack,
+					   data->tx_status.dst);
 			break;
 		case WLAN_FC_TYPE_DATA:
 			hostapd_tx_status(hapd, data->tx_status.dst,
@@ -768,7 +1063,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 					    data->rx_from_unknown.wds);
 		break;
 	case EVENT_RX_MGMT:
-		hostapd_mgmt_rx(hapd, &data->rx_mgmt);
+		hostapd_mgmt_rx(hapd, &data->rx_mgmt); //Probe Request 帧
 		break;
 #endif /* NEED_AP_MLME */
 	case EVENT_RX_PROBE_REQ:

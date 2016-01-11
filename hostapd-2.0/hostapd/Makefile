@@ -54,6 +54,7 @@ OBJS += ../src/ap/preauth_auth.o
 OBJS += ../src/ap/pmksa_cache_auth.o
 OBJS += ../src/ap/ieee802_11_shared.o
 OBJS += ../src/ap/beacon.o
+OBJS += ../src/ap/cJSON.o
 
 OBJS_c = hostapd_cli.o ../src/common/wpa_ctrl.o ../src/utils/os_$(CONFIG_OS).o
 
@@ -61,7 +62,7 @@ NEED_RC4=y
 NEED_AES=y
 NEED_MD5=y
 NEED_SHA1=y
-
+LIBS += -lm
 OBJS += ../src/drivers/drivers.o
 CFLAGS += -DHOSTAPD
 

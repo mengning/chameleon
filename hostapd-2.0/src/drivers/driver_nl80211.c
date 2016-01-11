@@ -6120,8 +6120,9 @@ static void handle_monitor_read(int sock, void *eloop_ctx, void *sock_ctx)
 
 	if (!injected)
 		handle_frame(drv, buf + iter.max_length,
-			     len - iter.max_length, datarate, ssi_signal);
+			     len - iter.max_length, datarate, ssi_signal); //回调处理，帧事件
 	else
+		//tx 状态, 回调 wpa_supplicant_event
 		handle_tx_callback(drv->ctx, buf + iter.max_length,
 				   len - iter.max_length, !failed);
 }
@@ -6375,6 +6376,7 @@ nl80211_create_monitor_interface(struct wpa_driver_nl80211_data *drv)
 		goto error;
 	}
 
+	//eloop 监听事件
 	if (eloop_register_read_sock(drv->monitor_sock, handle_monitor_read,
 				     drv, NULL)) {
 		printf("Could not register monitor read socket\n");
