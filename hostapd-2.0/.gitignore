@@ -1,0 +1,7 @@
+.tags
+.tags_sorted_by_file
+hostapd
+hostapd_cli
+*.hostapd
+*.d
+*.o

@@ -551,6 +551,7 @@ int main(int argc, char *argv[])
 	interfaces.ctrl_iface_init = hostapd_ctrl_iface_init;
 	interfaces.ctrl_iface_deinit = hostapd_ctrl_iface_deinit;
 	interfaces.driver_init = hostapd_driver_init;
+	interfaces.set_security_params = hostapd_set_security_params;
 	interfaces.global_iface_path = NULL;
 	interfaces.global_iface_name = NULL;
 	interfaces.global_ctrl_sock = -1;
