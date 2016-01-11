@@ -2946,7 +2946,7 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 }
 
 
-void hostapd_set_security_params(struct hostapd_bss_config *bss)
+ void hostapd_set_security_params(struct hostapd_bss_config *bss)
 {
 	int pairwise;
 
@@ -3092,7 +3092,7 @@ struct hostapd_config * hostapd_config_read(const char *fname)
 		conf = NULL;
 	}
 #endif /* WPA_IGNORE_CONFIG_ERRORS */
-
+    printf("read conf bss:%d\n",conf->num_bss);
 	return conf;
 }
 

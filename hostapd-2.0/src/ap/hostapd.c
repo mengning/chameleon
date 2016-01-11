@@ -32,11 +32,14 @@
 #include "ap_config.h"
 #include "p2p_hostapd.h"
 #include "gas_serv.h"
-
-
 static int hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason);
 static int hostapd_setup_encryption(char *iface, struct hostapd_data *hapd);
 static int hostapd_broadcast_wep_clear(struct hostapd_data *hapd);
+
+extern struct hostapd_iface *
+hostapd_interface_init2(struct hapd_interfaces *interfaces,
+                       const char *config_fname, int debug);
+
 
 extern int wpa_debug_level;
 extern struct wpa_driver_ops *wpa_drivers[];
@@ -59,7 +62,7 @@ int hostapd_for_each_interface(struct hapd_interfaces *interfaces,
 }
 
 
-static void hostapd_reload_bss(struct hostapd_data *hapd)
+void hostapd_reload_bss(struct hostapd_data *hapd)
 {
 #ifndef CONFIG_NO_RADIUS
 	radius_client_reconfig(hapd->radius, hapd->conf->radius);
@@ -107,7 +110,6 @@ static void hostapd_reload_bss(struct hostapd_data *hapd)
 	wpa_printf(MSG_DEBUG, "Reconfigured interface %s", hapd->conf->iface);
 }
 
-
 int hostapd_reload_config(struct hostapd_iface *iface)
 {
 	struct hostapd_data *hapd = iface->bss[0];
@@ -118,36 +120,164 @@ int hostapd_reload_config(struct hostapd_iface *iface)
 	    iface->interfaces->config_read_cb == NULL)
 		return -1;
 	newconf = iface->interfaces->config_read_cb(iface->config_fname);
-	if (newconf == NULL)
+    if (newconf == NULL)
 		return -1;
-
 	/*
 	 * Deauthenticate all stations since the new configuration may not
 	 * allow them to use the BSS anymore.
 	 */
-	for (j = 0; j < iface->num_bss; j++) {
+	
+    for (j = 0; j < iface->num_bss; j++) {
 		hostapd_flush_old_stations(iface->bss[j],
 					   WLAN_REASON_PREV_AUTH_NOT_VALID);
 		hostapd_broadcast_wep_clear(iface->bss[j]);
 
 #ifndef CONFIG_NO_RADIUS
-		/* TODO: update dynamic data based on changed configuration
-		 * items (e.g., open/close sockets, etc.) */
+		 //TODO: update dynamic data based on changed configuration
+		 // items (e.g., open/close sockets, etc.) 
 		radius_client_flush(iface->bss[j]->radius, 0);
-#endif /* CONFIG_NO_RADIUS */
+#endif // CONFIG_NO_RADIUS 
 	}
 
 	oldconf = hapd->iconf;
-	iface->conf = newconf;
-
+   iface->conf = newconf;
+    
 	for (j = 0; j < iface->num_bss; j++) {
 		hapd = iface->bss[j];
 		hapd->iconf = newconf;
 		hapd->conf = &newconf->bss[j];
 		hostapd_reload_bss(hapd);
 	}
-
 	hostapd_config_free(oldconf);
+	return 0;
+}
+
+
+
+int hostapd_reload_config2(struct hostapd_iface *iface)
+{
+	struct hostapd_data *hapd = iface->bss[0];
+	struct hostapd_config *newconf, *oldconf;
+	size_t j;
+
+	if (iface->interfaces == NULL ||
+	    iface->interfaces->config_read_cb == NULL)
+		return -1;
+	newconf = iface->interfaces->config_read_cb(iface->config_fname);
+	printf("lyc newconf bss=%d\n",newconf->num_bss);
+    printf("lyc iface->num_bss=%d\n",iface->num_bss);
+    if (newconf == NULL)
+		return -1;
+  //lyc add
+   // int k=0;
+   // for(j=0;j<(1<<22);j++)
+   // for(k=0;k<(1<<22);k++){
+   //     printf("system pending\n");
+   // }
+
+    for(j=0;j< newconf->num_bss;j++){
+        printf("lyc->newconf No:%d bss_config\n",j);
+        printf("iface:%s\n", newconf->bss[j].iface);
+        printf("ssid:%s\n",newconf->bss[j].ssid.ssid);
+    }
+    /*
+    iface->bss = (struct hostapd_data **)realloc(iface->bss, iface->num_bss * sizeof(struct hostapd_data *));
+    //os_memcpy(iface,oiface,sizeof(struct hostapd_iface *));
+    
+    //iface->interfaces->hostapd_init(iface->config_name);
+    //iface->bss[iface->num_bss-1]=hostapd_alloc_bss_data(iface, newconf,newconf->bss);
+    iface->interfaces->set_security_params(newconf->bss);
+    for(j=1;j<newconf->num_bss;j++)
+    {
+        iface->bss[j]=hostapd_alloc_bss_data(iface,newconf,&newconf->bss[j]);
+        iface->bss[j]->msg_ctx=iface->bss[j];
+        iface->bss[j]->driver=hapd->driver;
+        iface->bss[j]->drv_priv=hapd->drv_priv;
+    
+        memcpy(iface->bss[j]->own_addr,iface->bss[0]->own_addr,ETH_ALEN);
+        hostapd_setup_wpa(iface->bss[j]);
+        if(iface->bss[j]->wpa_auth)
+            wpa_init_keys(iface->bss[j]->wpa_auth);
+        hostapd_setup_wpa_psk(iface->bss[j]->conf);
+        iface->bss[j]->radius=radius_client_init(iface->bss[j],iface->bss[j]->conf->radius);
+    }
+    //iface->bss[iface->num_bss - 1] = hostapd_alloc_bss_data(iface, newconf,newconf->bss);
+    //iface->bss[iface->num_bss - 1]->msg_ctx = iface->bss[iface->num_bss - 1];
+    //iface->bss[iface->num_bss - 1]->drv_priv = iface->bss[0]->drv_priv;
+    //memcpy(iface->bss[iface->num_bss - 1]->own_addr, iface->bss[0]->own_addr, ETH_ALEN);
+    //hostapd_setup_wpa(iface->bss[iface->num_bss - 1]);
+    //if (iface->bss[iface->num_bss - 1]->wpa_auth)
+    //    wpa_init_keys(iface->bss[iface->num_bss - 1]->wpa_auth);
+                                            
+    //hostapd_setup_wpa_psk(iface->bss[iface->num_bss - 1]->conf);
+    //iface->bss[iface->num_bss - 1]->radius = radius_client_init(iface->bss[iface->num_bss - 1], 
+    //iface->bss[iface->num_bss - 1]->conf->radius);
+    if (hostapd_reload_iface(iface) < 0) {
+            wpa_printf(MSG_ERROR, "Reloading of interface failed");
+            return -1;
+    }*/
+    //if(iface->interfaces->driver_init(iface)<0){
+    //    printf("reload driver init fail");
+    //    return -1;
+    //}
+    //lyc add end    
+   
+    //for(j=0;j<iface->num_bss;j++){
+    //    printf("bss num:%d info:\n",j);
+        
+    //}
+	/*
+	 * Deauthenticate all stations since the new configuration may not
+	 * allow them to use the BSS anymore.
+	 */
+	
+    for (j = 0; j < iface->num_bss; j++) {
+		hostapd_flush_old_stations(iface->bss[j],
+					   WLAN_REASON_PREV_AUTH_NOT_VALID);
+		hostapd_broadcast_wep_clear(iface->bss[j]);
+
+#ifndef CONFIG_NO_RADIUS
+		 //TODO: update dynamic data based on changed configuration
+		 // items (e.g., open/close sockets, etc.) 
+		radius_client_flush(iface->bss[j]->radius, 0);
+#endif // CONFIG_NO_RADIUS 
+	}
+    
+    iface->num_bss=newconf->num_bss;
+    iface->bss = (struct hostapd_data **)realloc(iface->bss, iface->num_bss * sizeof(struct hostapd_data *));
+
+    oldconf = hapd->iconf;
+    iface->conf = newconf;
+    
+	for (j = 0; j < iface->num_bss; j++) {
+		hapd = iface->bss[j];
+		hapd->iconf = newconf;
+		hapd->conf = &newconf->bss[j];
+		hostapd_reload_bss(hapd);
+	}
+    struct wpa_init_params params;
+    size_t i;
+    hapd = iface->bss[0];
+    struct hostapd_bss_config *conf=hapd->conf;
+    u8 *b = conf->bssid;
+    struct wpa_driver_capa capa;
+   
+   
+
+    for(j=0;j<iface->num_bss;j++){
+        struct hostapd_data *bss=hapd->iface->bss[j];
+    }
+	hostapd_config_free(oldconf);
+ //会内存泄露
+    printf("===\n=lyc==new interfaces\n===\n"); 
+  //  struct hapd_interfaces *interfaces=iface->interfaces;
+   // interfaces->iface[0]=hostapd_interface_init2(iface->interfaces,iface->config_fname,0);
+   // os_free(iface);
+    //for (j = 0; j< iface->num_bss; j++ ){
+    //    printf("iface:bssno%d\n",j);
+    //    printf("iface:%s\n",iface->bss[j].iface);
+    //    printf("ssid:%s\n",iface->bss[j].ssid.ssid);
+    //}
 
 
 	return 0;
@@ -578,7 +708,7 @@ static struct sta_info * hostapd_das_find_sta(struct hostapd_data *hapd,
 }
 
 
-enum radius_das_res
+static enum radius_das_res
 hostapd_das_disconnect(void *ctx, struct radius_das_attrs *attr)
 {
 	struct hostapd_data *hapd = ctx;
@@ -611,7 +741,7 @@ hostapd_das_disconnect(void *ctx, struct radius_das_attrs *attr)
  * initialized. Most of the modules that are initialized here will be
  * deinitialized in hostapd_cleanup().
  */
-int hostapd_setup_bss(struct hostapd_data *hapd, int first)
+static int hostapd_setup_bss(struct hostapd_data *hapd, int first)
 {
 	struct hostapd_bss_config *conf = hapd->conf;
 	u8 ssid[HOSTAPD_MAX_SSID_LEN + 1];
@@ -820,8 +950,57 @@ static void hostapd_tx_queue_params(struct hostapd_iface *iface)
 	}
 }
 
-
 static int setup_interface(struct hostapd_iface *iface)
+{
+	struct hostapd_data *hapd = iface->bss[0];
+	size_t i;
+	char country[4];
+
+	/*
+	 * Make sure that all BSSes get configured with a pointer to the same
+	 * driver interface.
+	 */
+	for (i = 1; i < iface->num_bss; i++) {
+		iface->bss[i]->driver = hapd->driver;
+		iface->bss[i]->drv_priv = hapd->drv_priv;
+	}
+
+	if (hostapd_validate_bssid_configuration(iface))
+		return -1;
+
+	if (hapd->iconf->country[0] && hapd->iconf->country[1]) {
+		os_memcpy(country, hapd->iconf->country, 3);
+		country[3] = '\0';
+		if (hostapd_set_country(hapd, country) < 0) {
+			wpa_printf(MSG_ERROR, "Failed to set country code");
+			return -1;
+		}
+	}
+
+	if (hostapd_get_hw_features(iface)) {
+		/* Not all drivers support this yet, so continue without hw
+		 * feature data. */
+	} else {
+		int ret = hostapd_select_hw_mode(iface);
+		if (ret < 0) {
+			wpa_printf(MSG_ERROR, "Could not select hw_mode and "
+				   "channel. (%d)", ret);
+			return -1;
+		}
+		ret = hostapd_check_ht_capab(iface);
+		if (ret < 0)
+			return -1;
+		if (ret == 1) {
+			wpa_printf(MSG_DEBUG, "Interface initialization will "
+				   "be completed in a callback");
+			return 0;
+		}
+	}
+	return hostapd_setup_interface_complete(iface, 0);
+}
+
+
+static int setup_interface2(struct hostapd_iface *iface)
 {
 	struct hostapd_data *hapd = iface->bss[0];
 	size_t i;
@@ -992,6 +1171,20 @@ int hostapd_setup_interface(struct hostapd_iface *iface)
 
 	return 0;
 }
+int hostapd_setup_interface2(struct hostapd_iface *iface)
+{
+	int ret;
+
+	ret = setup_interface2(iface);
+	if (ret) {
+		wpa_printf(MSG_ERROR, "%s: Unable to setup interface2.",
+			   iface->bss[0]->conf->iface);
+		return -1;
+	}
+
+	return 0;
+}
+
 
 
 /**
@@ -1108,7 +1301,6 @@ int hostapd_reload_iface(struct hostapd_iface *hapd_iface)
 		 * items (e.g., open/close sockets, etc.) */
 		radius_client_flush(hapd_iface->bss[j]->radius, 0);
 #endif  /* CONFIG_NO_RADIUS */
-
 		hostapd_reload_bss(hapd_iface->bss[j]);
 	}
 	return 0;

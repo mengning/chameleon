@@ -27,7 +27,6 @@
 #include "dump_state.h"
 #include "ctrl_iface.h"
 
-
 extern int wpa_debug_level;
 extern int wpa_debug_show_keys;
 extern int wpa_debug_timestamp;
@@ -203,6 +202,132 @@ fail:
 	return NULL;
 }
 
+ struct hostapd_iface * hostapd_init2(const char *config_file)
+{
+
+	struct hostapd_iface *hapd_iface2 = NULL;
+	struct hostapd_config *conf = NULL;
+	struct hostapd_data *hapd;
+	size_t i;
+//    hostapd_interface_deinit_free(hapd_iface);
+//    os_free(hapd_iface);
+	hapd_iface2 = os_zalloc(sizeof(*hapd_iface2));
+	if (hapd_iface2 == NULL)
+		goto fail;
+
+	hapd_iface2->config_fname = os_strdup(config_file);
+	if (hapd_iface2->config_fname == NULL)
+		goto fail;
+
+	conf = hostapd_config_read(hapd_iface2->config_fname);
+	if (conf == NULL)
+		goto fail;
+	hapd_iface2->conf = conf;
+
+	hapd_iface2->num_bss = conf->num_bss;
+	hapd_iface2->bss = os_calloc(conf->num_bss,
+				    sizeof(struct hostapd_data *));
+	if (hapd_iface2->bss == NULL)
+		goto fail;
+
+	for (i = 0; i < conf->num_bss; i++) {
+		hapd = hapd_iface2->bss[i] =
+			hostapd_alloc_bss_data(hapd_iface2, conf,
+					       &conf->bss[i]);
+	//    hostapd_reload_bss(hapd_iface->bss[i]);
+        if (hapd == NULL)
+			goto fail;
+      //  hapd_iface->bss[i]->msg_ctx=hapd_iface->bss[i];
+		hapd->msg_ctx = hapd;
+	}
+    //os_free(hapd_iface);
+	return hapd_iface2;
+
+fail:
+	if (conf)
+		hostapd_config_free(conf);
+	if (hapd_iface2) {
+		os_free(hapd_iface2->config_fname);
+		os_free(hapd_iface2->bss);
+		os_free(hapd_iface2);
+	}
+	return NULL;
+}
+
+ int hostapd_driver_init2(struct hostapd_iface *iface)
+{
+	struct wpa_init_params params;
+	size_t i;
+	struct hostapd_data *hapd = iface->bss[0];
+	struct hostapd_bss_config *conf = hapd->conf;
+	u8 *b = conf->bssid;
+	struct wpa_driver_capa capa;
+
+	if (hapd->driver == NULL || hapd->driver->hapd_init == NULL) {
+		wpa_printf(MSG_ERROR, "No hostapd driver wrapper available");
+		return -1;
+	}
+
+	/* Initialize the driver interface */
+	if (!(b[0] | b[1] | b[2] | b[3] | b[4] | b[5]))
+		b = NULL;
+
+	os_memset(&params, 0, sizeof(params));
+	for (i = 0; wpa_drivers[i]; i++) {
+		if (wpa_drivers[i] != hapd->driver)
+			continue;
+
+		if (global.drv_priv[i] == NULL &&
+		    wpa_drivers[i]->global_init) {
+			global.drv_priv[i] = wpa_drivers[i]->global_init();
+			if (global.drv_priv[i] == NULL) {
+				wpa_printf(MSG_ERROR, "Failed to initialize "
+					   "driver '%s'",
+					   wpa_drivers[i]->name);
+				return -1;
+			}
+		}
+
+		params.global_priv = global.drv_priv[i];
+		break;
+	}
+	params.bssid = b;
+	params.ifname = hapd->conf->iface;
+	params.ssid = hapd->conf->ssid.ssid;
+	params.ssid_len = hapd->conf->ssid.ssid_len;
+	params.test_socket = hapd->conf->test_socket;
+	params.use_pae_group_addr = hapd->conf->use_pae_group_addr;
+
+	params.num_bridge = hapd->iface->num_bss;
+	//wrong!
+    params.bridge = os_calloc(hapd->iface->num_bss, sizeof(char *));
+	if (params.bridge == NULL)
+		return -1;
+	for (i = 0; i < hapd->iface->num_bss; i++) {
+		struct hostapd_data *bss = hapd->iface->bss[i];
+		if (bss->conf->bridge[0])
+			params.bridge[i] = bss->conf->bridge;
+	}
+
+	params.own_addr = hapd->own_addr;
+
+	hapd->drv_priv = hapd->driver->hapd_init(hapd, &params);
+	os_free(params.bridge);
+	if (hapd->drv_priv == NULL) {
+		wpa_printf(MSG_ERROR, "%s driver initialization failed.",
+			   hapd->driver->name);
+		hapd->driver = NULL;
+		return -1;
+	}
+
+	if (hapd->driver->get_capa &&
+	    hapd->driver->get_capa(hapd->drv_priv, &capa) == 0) {
+		iface->drv_flags = capa.flags;
+		iface->probe_resp_offloads = capa.probe_resp_offloads;
+	}
+
+	return 0;
+}
 
 static int hostapd_driver_init(struct hostapd_iface *iface)
 {
@@ -278,8 +403,45 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 	return 0;
 }
 
+struct hostapd_iface *
+hostapd_interface_init2(struct hapd_interfaces *interfaces,
+		       const char *config_fname, int debug)
+{
+	struct hostapd_iface *iface;
+    struct hostapd_iface *oface=interfaces->iface[0];
+	int k,r0,r1,r2;
 
-static struct hostapd_iface *
+	wpa_printf(MSG_ERROR, "Configuration file: %s", config_fname);
+	//iface = hostapd_init2(oface,config_fname);
+	iface = hostapd_init2(config_fname);
+    
+    
+    if (!iface)
+		return NULL;
+	
+//    hostapd_interface_deinit_free(oface);
+    iface->interfaces = interfaces;
+
+	for (k = 0; k < debug; k++) {
+		if (iface->bss[0]->conf->logger_stdout_level > 0)
+			iface->bss[0]->conf->logger_stdout_level--;
+	}
+    r0 = iface->conf->bss[0].iface[0]; 
+	if (r0!= 0 || hostapd_drv_none(iface->bss[0])) {
+        r2 =  hostapd_driver_init2(iface);  
+		printf("r2:=%d\n",r2);
+        if (r2!=0||
+			hostapd_setup_interface2(iface)) {
+			hostapd_interface_deinit_free(iface);
+			return NULL;
+		}
+	}
+    //os_free(oface);
+	return iface;
+}
+
+
+struct hostapd_iface *
 hostapd_interface_init(struct hapd_interfaces *interfaces,
 		       const char *config_fname, int debug)
 {
@@ -546,13 +708,14 @@ int main(int argc, char *argv[])
 
 	os_memset(&interfaces, 0, sizeof(interfaces));
 	interfaces.reload_config = hostapd_reload_config;
+	interfaces.reload_config2 = hostapd_reload_config2;
 	interfaces.config_read_cb = hostapd_config_read;
 	interfaces.for_each_interface = hostapd_for_each_interface;
 	interfaces.ctrl_iface_init = hostapd_ctrl_iface_init;
 	interfaces.ctrl_iface_deinit = hostapd_ctrl_iface_deinit;
 	interfaces.driver_init = hostapd_driver_init;
 	interfaces.set_security_params = hostapd_set_security_params;
-	interfaces.global_iface_path = NULL;
+    interfaces.global_iface_path = NULL;
 	interfaces.global_iface_name = NULL;
 	interfaces.global_ctrl_sock = -1;
 

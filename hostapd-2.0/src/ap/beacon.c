@@ -18,7 +18,6 @@
 
 #ifndef CONFIG_NATIVE_WINDOWS
 
-#include "utils/eloop.h"
 #include "utils/common.h"
 #include "common/ieee802_11_defs.h"
 #include "common/ieee802_11_common.h"
@@ -35,6 +34,7 @@
 #include "ap_drv_ops.h"
 #include "beacon.h"
 #include "hs20.h"
+
 
 #ifdef NEED_AP_MLME
 
@@ -195,7 +195,6 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 	struct ieee80211_mgmt *resp;
 	u8 *pos, *epos;
 	size_t buflen;
-    u8 mac_ascii[MAC_ASCII_LEN];
 
 #define MAX_PROBERESP_LEN 768
 	buflen = MAX_PROBERESP_LEN;
@@ -231,18 +230,9 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 
 	pos = resp->u.probe_resp.variable;
 	*pos++ = WLAN_EID_SSID;
-//	*pos++ = hapd->conf->ssid.ssid_len;
-//	os_memcpy(pos, hapd->conf->ssid.ssid, hapd->conf->ssid.ssid_len);
-//	pos += hapd->conf->ssid.ssid_len;
-
-    //MAC 地址存放在结构体 ieee80211_mgmt 的成员 sa[6] 中
-    wpa_printf(MSG_DEBUG, "把 MAC 地址设置为 ssid 名称");
-
-	//需要转换成 ASCII 码
-    mac_to_ascii(mac_ascii, req->sa);
-    *pos++ = MAC_ASCII_LEN;
-    os_memcpy(pos, mac_ascii, MAC_ASCII_LEN);
-    pos += MAC_ASCII_LEN;
+	*pos++ = hapd->conf->ssid.ssid_len;
+	os_memcpy(pos, hapd->conf->ssid.ssid, hapd->conf->ssid.ssid_len);
+	pos += hapd->conf->ssid.ssid_len;
 
 	/* Supported rates */
 	pos = hostapd_eid_supp_rates(hapd, pos);
@@ -329,18 +319,15 @@ enum ssid_match_result {
 static enum ssid_match_result ssid_match(struct hostapd_data *hapd,
 					 const u8 *ssid, size_t ssid_len,
 					 const u8 *ssid_list,
-					 size_t ssid_list_len,
-					 const u8 *addr)
+					 size_t ssid_list_len)
 {
 	const u8 *pos, *end;
 	int wildcard = 0;
-	u8 mac_ascii[MAC_ASCII_LEN];
 
 	if (ssid_len == 0)
 		wildcard = 1;
-	mac_to_ascii(mac_ascii, addr);
-    if (ssid_len == MAC_ASCII_LEN &&
-            os_memcmp(ssid, mac_ascii, MAC_ASCII_LEN) == 0)
+	if (ssid_len == hapd->conf->ssid.ssid_len &&
+	    os_memcmp(ssid, hapd->conf->ssid.ssid, ssid_len) == 0)
 		return EXACT_SSID_MATCH;
 
 	if (ssid_list == NULL)
@@ -362,6 +349,63 @@ static enum ssid_match_result ssid_match(struct hostapd_data *hapd,
 	return wildcard ? WILDCARD_SSID_MATCH : NO_SSID_MATCH;
 }
 
+
+static int bz=0;
+static int flagbz=0;
+int fd[2];
+pid_t id_h;
+char line[30];
+/*lyc function begin*/
+int call_haha(const u8 *macaddr,const size_t len){
+    int i;
+    if(bz==0){
+        //if(pipe(fd)<0){
+        if (socketpair(AF_UNIX, SOCK_STREAM, 0, fd)){
+            printf("pipe error");
+            return -1;
+        }
+        if((id_h=fork())<0){
+            printf("fork error\n");
+            return -1;
+        }else{
+            bz=1;
+        }
+    }
+    size_t macsize=6;
+    if(bz==1){
+        if(id_h >0){//parent
+            close(fd[0]);
+            //printf("parent write %d byte\n",macsize);
+            //for( i=0;i<macsize;i++)
+            //    printf("%02x ",macaddr[i]+10);
+            //printf("\n");
+            u8 ss[9];
+            ss[0]='#';
+            int itx=0;
+            for( itx=0;itx<6;itx++)
+                ss[itx+1]=macaddr[itx];
+            ss[7]='#';ss[8]='\0';
+            write(fd[1],ss,8);
+
+        }else if(flagbz && id_h==0){//child
+            printf("flagbz\n");
+        }else if(flagbz==0 && id_h==0){//child
+            printf("in child\n");
+            close(fd[1]);
+            char pip_str[32]={'\0'};
+            //printf("fd:int: %d\n",fd[0]);
+            //inttostr(pip_str,fd[0]);
+            sprintf(pip_str,"%d",fd[0]);
+            printf("fd:s:   %s\n",pip_str);
+            //if(execl("/home/luyuncheng/Workspace/Myhostapd/Hostapd/Service/","./haha",s,(char *)0)<0)
+            if(execl("/home/luyuncheng/Workspace/Myhostapd/Hostapd/Service/./haha",pip_str,(char *)0)<0)
+                printf("execl error");
+            else
+                flagbz=1;
+        }
+    }
+}
+
 void handle_probe_req(struct hostapd_data *hapd,
 		      const struct ieee80211_mgmt *mgmt, size_t len,
 		      int ssi_signal)
@@ -373,11 +417,9 @@ void handle_probe_req(struct hostapd_data *hapd,
 	struct sta_info *sta = NULL;
 	size_t i, resp_len;
 	int noack;
-	enum ssid_match_result res;	
-
+	enum ssid_match_result res;
+        call_haha(mgmt->sa,6);
 	ie = mgmt->u.probe_req.variable;
-
-	wpa_printf(MSG_DEBUG, "打印 Probe 请求源 MAC 地址： " MACSTR, MAC2STR(mgmt->sa));
 	if (len < IEEE80211_HDRLEN + sizeof(mgmt->u.probe_req))
 		return;
 	ie_len = len - (IEEE80211_HDRLEN + sizeof(mgmt->u.probe_req));
@@ -451,7 +493,7 @@ void handle_probe_req(struct hostapd_data *hapd,
 #endif /* CONFIG_P2P */
 
 	res = ssid_match(hapd, elems.ssid, elems.ssid_len,
-			 elems.ssid_list, elems.ssid_list_len, mgmt->sa);
+			 elems.ssid_list, elems.ssid_list_len);
 	if (res != NO_SSID_MATCH) {
 		if (sta)
 			sta->ssid_probe = &hapd->conf->ssid;
@@ -514,7 +556,7 @@ void handle_probe_req(struct hostapd_data *hapd,
 	noack = !!(res == WILDCARD_SSID_MATCH &&
 		   is_broadcast_ether_addr(mgmt->da));
 
-	if (hostapd_drv_send_mlme(hapd, resp, resp_len, noack) < 0) //发送
+	if (hostapd_drv_send_mlme(hapd, resp, resp_len, noack) < 0)
 		perror("handle_probe_req: send");
 
 	os_free(resp);
