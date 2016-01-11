@@ -1,0 +1,17 @@
+wps_state=2
+ssid=lyc1
+wpa=2
+wpa_key_mgmt=WPA-PSK
+wpa_pairwise=TKIP
+rsn_pairwise=CCMP
+wpa_passphrase=12345678
+auth_algs=3
+channel=11
+driver=nl80211
+hw_mode=g
+ieee80211n=1
+ignore_broadcast_ssid=0
+interface=wlan0
+macaddr_acl=0
+ctrl_interface=/var/run/hostapd
+wps_pin_requests=/var/run/hostapd_wps_pin_requests
