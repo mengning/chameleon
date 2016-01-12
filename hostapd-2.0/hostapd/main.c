@@ -375,6 +375,7 @@ static int hostapd_global_init(struct hapd_interfaces *interfaces,
 
 	random_init(entropy_file);
 
+//Add by AlphaZiggy. eloop event regist.
 #ifndef CONFIG_NATIVE_WINDOWS
 	eloop_register_signal(SIGHUP, handle_reload, interfaces);
 	eloop_register_signal(SIGUSR1, handle_dump_state, interfaces);
@@ -546,6 +547,7 @@ int main(int argc, char *argv[])
 
 	os_memset(&interfaces, 0, sizeof(interfaces));
 	interfaces.reload_config = hostapd_reload_config;
+	//read config file to config_read_cb
 	interfaces.config_read_cb = hostapd_config_read;
 	interfaces.for_each_interface = hostapd_for_each_interface;
 	interfaces.ctrl_iface_init = hostapd_ctrl_iface_init;
@@ -619,10 +621,11 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	//Eloop init and regist SIGNAL
 	if (hostapd_global_init(&interfaces, entropy_file))
 		return -1;
 
-	/* Initialize interfaces */
+	/* Initialize interfaces */ //support multi interfaces.
 	for (i = 0; i < interfaces.count; i++) {
 		interfaces.iface[i] = hostapd_interface_init(&interfaces,
 							     argv[optind + i],
@@ -632,6 +635,20 @@ int main(int argc, char *argv[])
 	}
 
 	hostapd_global_ctrl_iface_init(&interfaces);
+
+/*
+	//Add by AlphaZiggy, append a fixed bss.
+	char *append_bss = "wlan0append0";
+	char *append_ssid = "AlphaZiggyAppend";
+	hostapd_config_append_bss(interfaces.iface[0]->conf, append_bss, append_ssid);
+	printf("###Append bss iface: %s\n", interfaces.iface[0]->conf->last_bss->iface);
+	printf("###Append bss ssid: %s\n", interfaces.iface[0]->conf->last_bss->ssid.ssid);
+
+	//hostapd_driver_init(interfaces.iface[0]);
+	hostapd_setup_interface(interfaces.iface[0]);
+	//End add.
+*/
+
 
 	if (hostapd_global_run(&interfaces, daemonize, pid_file))
 		goto out;

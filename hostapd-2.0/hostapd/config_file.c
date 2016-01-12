@@ -2468,7 +2468,7 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 					   "ac item", line);
 				errors++;
 			}
-		} else if (os_strcmp(buf, "bss") == 0) {
+		} else if (os_strcmp(buf, "bss") == 0) {//Multiple bss.
 			if (hostapd_config_bss(conf, pos)) {
 				wpa_printf(MSG_ERROR, "Line %d: invalid bss "
 					   "item", line);
@@ -3007,6 +3007,26 @@ static void hostapd_set_security_params(struct hostapd_bss_config *bss)
 	}
 }
 
+/*
+//Add by AlphaZiggy, append a fixed bss.
+void hostapd_config_append_bss(struct hostapd_config *conf,
+			       char *bss_name, char *bss_ssid)
+{
+	struct hostapd_bss_config *bss;
+	static int counter = 0;
+	if(counter == 0) {
+		//hostapd_config_bss(conf, bss_name);
+		//bss = conf->last_bss;
+		hostapd_config_fill(conf, bss, "bss", bss_name, -1);
+		hostapd_config_fill(conf, bss, "ssid", bss_ssid, -1);
+		counter++;
+	}
+	else {
+		return;
+		}
+}
+//End add.
+*/
 
 /**
  * hostapd_config_read - Read and parse a configuration file
@@ -3022,6 +3042,10 @@ struct hostapd_config * hostapd_config_read(const char *fname)
 	int line = 0;
 	int errors = 0;
 	size_t i;
+	//Add by AlphaZiggy, append a fixed bss.
+	//char *append_bss = "wlan0append0";
+	//char *append_ssid = "AlphaZiggyAppend";
+	//End add.
 
 	f = fopen(fname, "r");
 	if (f == NULL) {
@@ -3073,10 +3097,15 @@ struct hostapd_config * hostapd_config_read(const char *fname)
 		}
 		*pos = '\0';
 		pos++;
+		//Configure AP according to item name in buf[0] and value in buf[pos].
 		errors += hostapd_config_fill(conf, bss, buf, pos, line);
 	}
 
 	fclose(f);
+
+	//Add by AlphaZiggy, append a fixed bss.
+	//hostapd_config_append_bss(conf, append_bss, append_ssid);
+	//End add.
 
 	for (i = 0; i < conf->num_bss; i++)
 		hostapd_set_security_params(&conf->bss[i]);

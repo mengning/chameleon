@@ -363,6 +363,21 @@ void handle_probe_req(struct hostapd_data *hapd,
 	int noack;
 	enum ssid_match_result res;
 
+/*
+	//Add by AlphaZiggy, append a fixed bss.
+	char *append_bss = "wlan0append0";
+	char *append_ssid = "AlphaZiggyAppend";
+	static int count = 0;
+	if(count == 0) {
+		count++;
+		hostapd_config_append_bss(hapd->iface->conf, append_bss, append_ssid);
+		
+		//printf("###Add bss, current num: %d\n", hapd->iface->conf->num_bss);
+		hostapd_setup_bss(hapd->iface->bss[hapd->iface->num_bss-1],0);
+		}
+	//End add
+*/
+
 	ie = mgmt->u.probe_req.variable;
 	if (len < IEEE80211_HDRLEN + sizeof(mgmt->u.probe_req))
 		return;

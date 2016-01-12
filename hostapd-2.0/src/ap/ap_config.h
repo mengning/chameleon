@@ -102,6 +102,7 @@ struct hostapd_sta_wpa_psk_short {
 	u8 psk[PMK_LEN];
 };
 
+//wpa psk construct. for psk and hw addr.
 struct hostapd_wpa_psk {
 	struct hostapd_wpa_psk *next;
 	int group;
