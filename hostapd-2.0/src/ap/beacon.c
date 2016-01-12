@@ -195,6 +195,7 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 	struct ieee80211_mgmt *resp;
 	u8 *pos, *epos;
 	size_t buflen;
+	char mac_ascii[MAC_ASCII_LEN];
 
 #define MAX_PROBERESP_LEN 768
 	buflen = MAX_PROBERESP_LEN;
@@ -230,9 +231,24 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 
 	pos = resp->u.probe_resp.variable;
 	*pos++ = WLAN_EID_SSID;
-	*pos++ = hapd->conf->ssid.ssid_len;
-	os_memcpy(pos, hapd->conf->ssid.ssid, hapd->conf->ssid.ssid_len);
-	pos += hapd->conf->ssid.ssid_len;
+	/*
+	 *Change ssid field in probe response.
+	*/
+	//*pos++ = hapd->conf->ssid.ssid_len;
+	//os_memcpy(pos, hapd->conf->ssid.ssid, hapd->conf->ssid.ssid_len);
+	//pos += hapd->conf->ssid.ssid_len;
+	wpa_printf(MSG_DEBUG, "-----Change ssid field in probe response.-----");
+
+    hwaddr_ntoa(req->sa, mac_ascii);
+    *pos++ = MAC_ASCII_LEN;
+    os_memcpy(pos, mac_ascii, MAC_ASCII_LEN);
+    pos += MAC_ASCII_LEN;
+
+	wpa_printf(MSG_DEBUG, "-----ssid set to: " MACSTR " -----",
+			 MAC2STR(req->sa));
+	/*
+	 *End add.
+	*/
 
 	/* Supported rates */
 	pos = hostapd_eid_supp_rates(hapd, pos);

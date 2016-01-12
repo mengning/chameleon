@@ -37,6 +37,28 @@ int hex2byte(const char *hex)
 
 
 /**
+ * hwaddr_ntoa - Convert hwaddr to MAC address (colon-delimited format)
+ * @txt: MAC address as a string (e.g., "00:11:22:33:44:55")
+ * @addr: Buffer for the MAC address (ETH_ALEN = 6 bytes)
+ * Returns: 0 on success, -1 on failure (e.g., addr not hex)
+ */
+int hwaddr_ntoa(const u8 *addr, char *txt)
+{
+	int i;
+	char mac_str[MAC_ASCII_LEN + 1];
+
+	if (!is_hex(addr, 6))
+		return -1;
+
+	sprintf(mac_str, MACSTR, MAC2STR(addr));
+	for (i = 0; i< MAC_ASCII_LEN; i++)
+        txt[i] = mac_str[i];
+
+	return 0;
+}
+
+
+/**
  * hwaddr_aton - Convert ASCII string to MAC address (colon-delimited format)
  * @txt: MAC address as a string (e.g., "00:11:22:33:44:55")
  * @addr: Buffer for the MAC address (ETH_ALEN = 6 bytes)

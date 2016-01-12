@@ -289,6 +289,9 @@ static inline unsigned int wpa_swap_32(unsigned int v)
 			 (((u64) (a)[1]) << 8) | ((u64) (a)[0]))
 
 
+#ifndef MAC_ASCII_LEN
+#define MAC_ASCII_LEN 17
+#endif
 #ifndef ETH_ALEN
 #define ETH_ALEN 6
 #endif
@@ -422,6 +425,7 @@ typedef u64 __bitwise le64;
 #endif /* __GNUC__ */
 #endif /* __must_check */
 
+int hwaddr_ntoa(const u8 *addr, char *txt);
 int hwaddr_aton(const char *txt, u8 *addr);
 int hwaddr_compact_aton(const char *txt, u8 *addr);
 int hwaddr_aton2(const char *txt, u8 *addr);
