@@ -289,6 +289,9 @@ static inline unsigned int wpa_swap_32(unsigned int v)
 			 (((u64) (a)[1]) << 8) | ((u64) (a)[0]))
 
 
+#ifndef PSK_LEN
+#define PSK_LEN 64
+#endif
 #ifndef MAC_ASCII_LEN
 #define MAC_ASCII_LEN 17
 #endif

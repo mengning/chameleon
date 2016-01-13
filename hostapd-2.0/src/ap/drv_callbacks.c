@@ -36,6 +36,7 @@
 #include "authsrv.h"
 #include "iapp.h"
 #include "vlan_init.h"
+#include "cJSON.h"
 
 extern int wpa_debug_level;
 
@@ -556,6 +557,103 @@ static struct hostapd_data * get_hapd_bssid(struct hostapd_iface *iface,
 }
 */
 
+#define SERV_IP "115.28.13.102"
+#define SERV_PORT 8080
+
+int hostapd_req_psk(char *psk, const u8 *sa)
+{
+	int sockfd, k;
+	struct sockaddr_in serv_addr;
+	char url[4096], buf[1024], json[64];
+	char *mac = NULL;
+	cJSON *json_psk = NULL, *json_mac = NULL, *root = NULL;
+	size_t i = 0, j = 0;
+
+	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+		wpa_printf(MSG_ERROR, "-----Error create socket-----");
+		goto error;
+	}
+
+	memset(&serv_addr, 0, sizeof(serv_addr));
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_port = htons(SERV_PORT);
+	serv_addr.sin_addr.s_addr = inet_addr(SERV_IP);
+
+	if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+		wpa_printf(MSG_ERROR, "--------Error connect server--------");
+		goto error;
+	}
+
+	wpa_printf(MSG_DEBUG, "-------Request psk of: " MACSTR, MAC2STR(sa));
+	mac = (char *)os_malloc(64);
+	sprintf(mac, MACSTR, MAC2STR(sa));
+
+	memset(url, 0, 4096);
+	sprintf(url,"%s%s HTTP/1.1\r\n", "GET /ChameleonAC/Select?mac=", mac);
+	strcat(url, "Host: 115.28.13.102:8080\r\n");
+	strcat(url, "User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:43.0) Gecko/20100101 Firefox/43.0\r\n");
+	strcat(url, "\r\n");
+
+	wpa_printf(MSG_DEBUG, "--------Sending HTTP request--------");
+
+	if (write(sockfd, url, strlen(url)) < 0) {
+		wpa_printf(MSG_ERROR, "--------Error sending HTTP request--------");
+		goto error;
+	}
+
+	if (read(sockfd, buf, sizeof(buf)) < 0) {
+		wpa_printf(MSG_ERROR, "--------No response from server--------");
+		goto error;
+	}
+
+	for (k = 0; k < 5; k++) {
+		while (buf[i] != '\n') {
+			i++;
+		}
+		i++;
+	}
+	i += 2;
+
+	while (!isspace(buf[i])) {
+		json[j] = buf[i];
+		i++;
+		j++;
+	}
+
+	if (strcmp(json, "-1") == 0) {
+		wpa_printf(MSG_ERROR, "--------User dosen't exist--------");
+		goto error;
+	}
+
+	root = cJSON_Parse(json);
+	if (root) {
+		json_psk = cJSON_GetObjectItem(root, "psk");
+		json_mac = cJSON_GetObjectItem(root, "mac");
+		if (json_psk && json_mac && (strcmp(mac, json_mac->valuestring) == 0)) {
+			if (os_strlen(json_psk->valuestring) > PSK_LEN) {
+				wpa_printf(MSG_ERROR, "--------Too long psk from server--------");
+				goto error;
+			} else {
+				wpa_printf(MSG_DEBUG, "--------Got psk from server: %s--------", json_psk->valuestring);
+				os_strlcpy(psk, json_psk->valuestring, PSK_LEN+1);
+				return 0;
+			}
+		} else {
+			wpa_printf(MSG_ERROR, "--------JSON content error--------");
+			goto error;
+		}
+	} else {
+		wpa_printf(MSG_ERROR, "--------Error get JSON--------");
+		goto error;
+	}
+
+error:
+	if (root) cJSON_Delete(root);
+	if (sockfd) close(sockfd);
+	if (mac) os_free(mac);
+	return -1;
+}
+
 static int hostapd_setup_bss_dynamically(struct hostapd_data *hapd)
 {
 	struct hostapd_bss_config *conf = hapd->conf;
@@ -665,8 +763,7 @@ static struct hostapd_data * get_hapd_bssid(struct hostapd_iface *iface,
 	size_t i;
 	char mac_ascii[MAC_ASCII_LEN];
 	struct hostapd_config *conf;
-	//TODO: Fetch psk from server.
-	char *psk = "87654321";
+	char psk[PSK_LEN+1];
 
 	if (bssid == NULL)
 		return NULL;
@@ -698,6 +795,11 @@ static struct hostapd_data * get_hapd_bssid(struct hostapd_iface *iface,
 		size_t index;
 
 		wpa_printf(MSG_DEBUG, "New BSS using MAC addr: " MACSTR, MAC2STR(sa));
+
+		if(hostapd_req_psk(psk, sa)) {
+			wpa_printf(MSG_INFO, "Error fetch psk for: " MACSTR, MAC2STR(sa));
+			return NULL;
+			}
 
 		iface->num_bss++;
 		iface->bss = (struct hostapd_data **)realloc(iface->bss,
