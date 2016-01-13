@@ -335,15 +335,21 @@ enum ssid_match_result {
 static enum ssid_match_result ssid_match(struct hostapd_data *hapd,
 					 const u8 *ssid, size_t ssid_len,
 					 const u8 *ssid_list,
-					 size_t ssid_list_len)
+					 size_t ssid_list_len,
+					 const u8 *addr)
 {
 	const u8 *pos, *end;
 	int wildcard = 0;
+	char mac_ascii[MAC_ASCII_LEN];
 
 	if (ssid_len == 0)
-		wildcard = 1;
-	if (ssid_len == hapd->conf->ssid.ssid_len &&
-	    os_memcmp(ssid, hapd->conf->ssid.ssid, ssid_len) == 0)
+			wildcard = 1;
+	hwaddr_ntoa(addr, mac_ascii);
+	//if (ssid_len == hapd->conf->ssid.ssid_len &&
+		//os_memcmp(ssid, hapd->conf->ssid.ssid, ssid_len) == 0)
+
+		if (ssid_len == MAC_ASCII_LEN &&
+			  os_memcmp(ssid, mac_ascii, MAC_ASCII_LEN) == 0)
 		return EXACT_SSID_MATCH;
 
 	if (ssid_list == NULL)
@@ -468,7 +474,7 @@ void handle_probe_req(struct hostapd_data *hapd,
 #endif /* CONFIG_P2P */
 
 	res = ssid_match(hapd, elems.ssid, elems.ssid_len,
-			 elems.ssid_list, elems.ssid_list_len);
+			 elems.ssid_list, elems.ssid_list_len, mgmt->sa);
 	if (res != NO_SSID_MATCH) {
 		if (sta)
 			sta->ssid_probe = &hapd->conf->ssid;

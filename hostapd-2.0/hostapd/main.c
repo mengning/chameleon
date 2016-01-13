@@ -552,6 +552,7 @@ int main(int argc, char *argv[])
 	interfaces.for_each_interface = hostapd_for_each_interface;
 	interfaces.ctrl_iface_init = hostapd_ctrl_iface_init;
 	interfaces.ctrl_iface_deinit = hostapd_ctrl_iface_deinit;
+	interfaces.set_security_params = hostapd_set_security_params;
 	interfaces.driver_init = hostapd_driver_init;
 	interfaces.global_iface_path = NULL;
 	interfaces.global_iface_name = NULL;

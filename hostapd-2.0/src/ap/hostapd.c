@@ -578,7 +578,7 @@ static struct sta_info * hostapd_das_find_sta(struct hostapd_data *hapd,
 }
 
 
-static enum radius_das_res
+enum radius_das_res
 hostapd_das_disconnect(void *ctx, struct radius_das_attrs *attr)
 {
 	struct hostapd_data *hapd = ctx;

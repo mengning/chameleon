@@ -11,6 +11,7 @@
 
 #include "common/defs.h"
 #include "ap_config.h"
+#include "radius/radius_das.h"
 
 struct wpa_driver_ops;
 struct wpa_ctrl_dst;
@@ -35,6 +36,7 @@ struct hapd_interfaces {
 				  int (*cb)(struct hostapd_iface *iface,
 					    void *ctx), void *ctx);
 	int (*driver_init)(struct hostapd_iface *iface);
+	void (*set_security_params)(struct hostapd_bss_config *bss);
 
 	size_t count;
 	int global_ctrl_sock;
@@ -305,5 +307,8 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 const struct hostapd_eap_user *
 hostapd_get_eap_user(struct hostapd_data *hapd, const u8 *identity,
 		     size_t identity_len, int phase2);
+
+enum radius_das_res
+hostapd_das_disconnect(void *ctx, struct radius_das_attrs *attr);
 
 #endif /* HOSTAPD_H */
